@@ -1,0 +1,6 @@
+# Core data science dependencies
+pandas>=1.5.0
+numpy>=1.24.0
+jupyter>=1.0.0
+
+# Add more dependencies as needed during development

@@ -1,0 +1,51 @@
+files:
+  metadata::
+    - data/raw/abcd_p_demo.csv
+    - data/raw/mh_p_cbcl.csv
+    - data/raw/mri_y_adm_info.csv
+    - data/raw/mri_y_qc_auto_post.csv
+
+  imaging:
+    - data/raw/mri_y_dti_fa_is_at.csv
+    - data/raw/mri_y_dti_ld_is_at.csv
+    - data/raw/mri_y_dti_md_is_at.csv
+    - data/raw/mri_y_dti_td_is_at.csv
+    - data/raw/mri_y_smr_area_dsk.csv
+    - data/raw/mri_y_smr_area_dst.csv
+    - data/raw/mri_y_smr_sulc_dsk.csv
+    - data/raw/mri_y_smr_sulc_dst.csv
+    - data/raw/mri_y_smr_thk_dsk.csv
+    - data/raw/mri_y_smr_thk_dst.csv
+    - data/raw/mri_y_smr_vol_aseg.csv
+    - data/raw/mri_y_smr_vol_dsk.csv
+    - data/raw/mri_y_smr_vol_dst.csv
+
+columns:
+  id: src_subject_id
+  timepoint: eventname
+  t_score: cbcl_scr_dsm5_anxdisord_t
+  sex: demo_sex_v2
+  age: demo_brthdat_v2
+  scanner_manufacturer: mri_info_manufacturer
+  scanner_serial: mri_info_deviceserialnumber
+  qc: apqc_smri_topo_ndefect
+
+  derived_columns:
+    - anx_group # anxiety grouping created from t_score (65+ = clinical, 60-64 = subclinical, <59 = control)
+
+
+feature_families:
+  smri_area:
+    - "mrisdp*"
+    - "smri_area*"
+  smri_thk:
+    - "mrisdp*"
+    - "smri_thk*"
+  smri_sulc:
+    - "mrisdp*"
+    - "smri_sulc*"
+  smri_vol:
+    - "mrisdp*"
+    - "smri_vol*"
+  dti:
+    - "dmri*"
