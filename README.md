@@ -1,8 +1,6 @@
-# ABCD Anxiety Analysis: Reproducible Neuroimaging Pipeline
+# ABCD Analysis: Flexible Neuroimaging Pipeline
 
-Hello
-
-A reproducible, config-driven neuroimaging pipeline for ABCD dataset anxiety analysis.
+A config-driven neuroimaging pipeline for ABCD dataset anxiety analysis.
 
 ## Project Structure
 
