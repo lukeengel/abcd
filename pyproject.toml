@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "SYNAPSE"
+name = "core"
 version = "0.1.0"
-description = "Scalable Youth Neuroimaging Analysis Pipeline for Scientific Exploration"
+description = "ABCD Anxiety Analysis: Reproducible Neuroimaging Pipeline"
 requires-python = ">=3.9"
 dependencies = [
     # Core data science

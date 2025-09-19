@@ -1,5 +1,5 @@
 files:
-  metadata::
+  metadata:
     - data/raw/abcd_p_demo.csv
     - data/raw/mh_p_cbcl.csv
     - data/raw/mri_y_adm_info.csv
@@ -29,23 +29,55 @@ columns:
   scanner_manufacturer: mri_info_manufacturer
   scanner_serial: mri_info_deviceserialnumber
   qc: apqc_smri_topo_ndefect
+  imaging:
+    smri_area:
+    - mrisdp*
+    - smri*
+  smri_thk:
+    - mrisdp*
+    - smri*
+  smri_sulc:
+    - mrisdp*
+    - smri*
+  smri_vol:
+    - mrisdp*
+    - smri*
+  dti:
+    - dmri*
 
   derived_columns:
     - anx_group # anxiety grouping created from t_score (65+ = clinical, 60-64 = subclinical, <59 = control)
 
+dtypes:
+  src_subject_id: string
+
+  # Categorical variables with limited values
+  eventname: category
+  demo_sex_v2: category
+  mri_info_manufacturer: category
+
+  # Numeric variables
+  cbcl_scr_dsm5_anxdisord_t: float32
+  demo_brthdat_v2: "Int16"
+  apqc_smri_topo_ndefect: "Int16"
+
+  # Scanner info (can be category if limited manufacturers/serials)
+  mri_info_deviceserialnumber: string
+  imaging: float64
+
 
 feature_families:
   smri_area:
-    - "mrisdp*"
-    - "smri_area*"
+    - mrisdp*
+    - smri_area*
   smri_thk:
-    - "mrisdp*"
-    - "smri_thk*"
+    - mrisdp*
+    - smri_thk*
   smri_sulc:
-    - "mrisdp*"
-    - "smri_sulc*"
+    - mrisdp*
+    - smri_sulc*
   smri_vol:
-    - "mrisdp*"
-    - "smri_vol*"
+    - mrisdp*
+    - smri_vol*
   dti:
-    - "dmri*"
+    - dmri*
