@@ -8,6 +8,7 @@ data/
 
 # Jupyter
 .ipynb_checkpoints/
+.virtual_documents/
 
 # Outputs
 outputs/
