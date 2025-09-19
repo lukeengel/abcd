@@ -31,7 +31,7 @@ docker-compose up
 
 ```
 SYNAPSE/
-├── src/synapse/          # Python package
+├── src/SYNAPSE/          # Python package
 ├── notebooks/            # Jupyter notebooks
 ├── configs/              # Configuration files
 ├── tests/                # Test suite
