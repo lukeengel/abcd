@@ -1,9 +1,12 @@
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
 
+# Data
 data/
 
+# OS
 .DS_Store
 
 # Jupyter
