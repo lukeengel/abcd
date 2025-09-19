@@ -36,7 +36,6 @@ def _set_dir():
     """Set directory"""
     cwd = Path.cwd()
     repo_root = cwd if (cwd / "configs").exists() else cwd.parent
-    assert (repo_root / "configs").exists(), f"Couldn't find 'configs/' in {repo_root}"
     return repo_root
 
 
