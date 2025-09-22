@@ -43,16 +43,12 @@ def load_and_merge(env) -> pd.DataFrame:
         usecols = get_columns_for_file(env, file)
 
         if usecols is not None:
-            available_cols = pd.read_csv(path, nrows=0, engine="python").columns
+            available_cols = pd.read_csv(path, nrows=0).columns
             cols_to_read = [col for col in usecols if col in available_cols]
         else:
             cols_to_read = None
 
-        df = pd.read_csv(
-            path,
-            usecols=cols_to_read,
-            engine="python",
-        )
+        df = pd.read_csv(path, usecols=cols_to_read, engine="python")
 
         if merged is None:
             merged = df
