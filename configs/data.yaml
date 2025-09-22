@@ -20,16 +20,50 @@ files:
     - data/raw/mri_y_smr_vol_dst.csv
 
 columns:
-  id: src_subject_id
-  timepoint: eventname
-  t_score: cbcl_scr_dsm5_anxdisord_t
-  sex: demo_sex_v2
-  age: demo_brthdat_v2
-  scanner_manufacturer: mri_info_manufacturer
-  scanner_serial: mri_info_deviceserialnumber
-  qc: apqc_smri_topo_ndefect
-  sex_mapped: sex_mapped
-  anx_group: anx_group
+  mapping:
+    id: src_subject_id
+    timepoint: eventname
+    sex: demo_sex_v2
+    sex_mapped: sex_mapped
+    age: demo_brthdat_v2
+    t_score: cbcl_scr_dsm5_anxdisord_t
+    anx_group: anx_group
+    scanner_manufacturer: mri_info_manufacturer
+    scanner_serial: mri_info_deviceserialnumber
+    qc: apqc_smri_topo_ndefect
+  metadata:
+    - src_subject_id
+    - eventname
+    - demo_sex_v2
+    - demo_brthdat_v2
+    - cbcl_scr_dsm5_anxdisord_t
+    - mri_info_manufacturer
+    - mri_info_deviceserialnumber
+    - apqc_smri_topo_ndefect
+  derived:
+    - sex_mapped
+    - anx_group
+  imaging:
+    dti:
+      prefixes:
+        - dmri
+    smri_area:
+      mrisdp_range: [303, 453]
+      prefixes:
+        - smri_area_cdk
+    smri_thk:
+      mrisdp_range: [1, 151]
+      prefixes:
+        - smri_thk_cdk
+    smri_sulc:
+      mrisdp_range: [152, 302]
+      prefixes:
+        - smri_sulc_cdk
+    smri_vol:
+      mrisdp_range: [454, 604]
+      prefixes:
+        - smri_vol_cdk
+        - smri_vol_scs
 
 timepoints:
   baseline: baseline_year_1_arm_1

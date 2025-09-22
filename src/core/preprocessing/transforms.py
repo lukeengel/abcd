@@ -6,34 +6,36 @@ import pandas as pd
 
 
 def recode(env, df: pd.DataFrame) -> pd.DataFrame:
-    """Apply recodings defined in the config (mutates ``df``)."""
+    """Apply recodings defined in the config."""
 
     config = env.configs.data
+    column_map = config["columns"]["mapping"]
 
     for mapping_cfg in config["derived"].values():
         if "map" not in mapping_cfg:
             continue
 
-        source_col = config["columns"][mapping_cfg["source"]]
+        source_col = column_map[mapping_cfg["source"]]
         output_col = mapping_cfg["output"]
-        mapping = mapping_cfg["map"]
+        value_map = mapping_cfg["map"]
 
         if source_col in df.columns:
-            df.loc[:, output_col] = df[source_col].map(mapping)
+            df.loc[:, output_col] = df[source_col].map(value_map)
 
     return df
 
 
 def binning(env, df: pd.DataFrame) -> pd.DataFrame:
-    """Create bins from configured thresholds (mutates ``df``)."""
+    """Create bins from configured thresholds."""
 
     config = env.configs.data
+    column_map = config["columns"]["mapping"]
 
     for binning_cfg in config["derived"].values():
         if "thresholds" not in binning_cfg:
             continue
 
-        score_col = config["columns"][binning_cfg["source"]]
+        score_col = column_map[binning_cfg["source"]]
         if score_col not in df.columns:
             continue
 

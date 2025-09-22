@@ -12,6 +12,7 @@ def get_columns_for_file(env, filepath: str | Path) -> list[str] | None:
     """Return columns to load for a file based on config."""
 
     config = env.configs.data
+    columns_cfg = config["columns"]["mapping"]
     files_cfg = config["files"]
     str_path = str(filepath)
 
@@ -19,7 +20,12 @@ def get_columns_for_file(env, filepath: str | Path) -> list[str] | None:
     imaging_files: Sequence[str] = files_cfg.get("imaging", [])
 
     if str_path in metadata_files:
-        cols = [value for value in config["columns"].values() if isinstance(value, str)]
+        metadata_cols = list(config["columns"].get("metadata", []))
+        derived_cols = list(config["columns"].get("derived", []))
+        mapping_cols = [
+            value for value in columns_cfg.values() if isinstance(value, str)
+        ]
+        cols = metadata_cols + derived_cols + mapping_cols
         unique_cols = list(dict.fromkeys(cols))
         return unique_cols
 
@@ -33,9 +39,10 @@ def load_and_merge(env) -> pd.DataFrame:
     """Load and outer-merge metadata and imaging CSVs."""
 
     config = env.configs.data
+    columns_cfg = config["columns"]["mapping"]
     files_cfg = config["files"]
-    id_col = config["columns"]["id"]
-    timepoint_col = config["columns"]["timepoint"]
+    id_col = columns_cfg["id"]
+    timepoint_col = columns_cfg["timepoint"]
 
     merged: pd.DataFrame | None = None
     for file in files_cfg["metadata"] + files_cfg["imaging"]:

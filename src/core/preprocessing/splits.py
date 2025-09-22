@@ -9,7 +9,8 @@ def timepoint_split(env, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split into baseline-only"""
 
     config = env.configs.data
-    timepoint_col = config["columns"]["timepoint"]
+    mapping = config["columns"]["mapping"]
+    timepoint_col = mapping["timepoint"]
 
     baseline_timepoint = config["timepoints"]["baseline"]
     baseline_df = df[df[timepoint_col] == baseline_timepoint].copy()
