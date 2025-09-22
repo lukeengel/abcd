@@ -4,7 +4,6 @@ files:
     - data/raw/mh_p_cbcl.csv
     - data/raw/mri_y_adm_info.csv
     - data/raw/mri_y_qc_auto_post.csv
-
   imaging:
     - data/raw/mri_y_dti_fa_is_at.csv
     - data/raw/mri_y_dti_ld_is_at.csv
@@ -29,42 +28,37 @@ columns:
   scanner_manufacturer: mri_info_manufacturer
   scanner_serial: mri_info_deviceserialnumber
   qc: apqc_smri_topo_ndefect
-  imaging:
-    smri_area:
-    - mrisdp*
-    - smri*
-  smri_thk:
-    - mrisdp*
-    - smri*
-  smri_sulc:
-    - mrisdp*
-    - smri*
-  smri_vol:
-    - mrisdp*
-    - smri*
-  dti:
-    - dmri*
+  sex_mapped: sex_mapped
+  anx_group: anx_group
 
-  derived_columns:
-    - anx_group # anxiety grouping created from t_score (65+ = clinical, 60-64 = subclinical, <59 = control)
+timepoints:
+  baseline: baseline_year_1_arm_1
+  year2: 2_year_follow_up_y_arm_1
+  year3: 3_year_follow_up_y_arm_1
+  year4: 4_year_follow_up_y_arm_1
 
-dtypes:
-  src_subject_id: string
+qc_thresholds:
+  surface_holes_max: 62
 
-  # Categorical variables with limited values
-  eventname: category
-  demo_sex_v2: category
-  mri_info_manufacturer: category
-
-  # Numeric variables
-  cbcl_scr_dsm5_anxdisord_t: float32
-  demo_brthdat_v2: "Int16"
-  apqc_smri_topo_ndefect: "Int16"
-
-  # Scanner info (can be category if limited manufacturers/serials)
-  mri_info_deviceserialnumber: string
-  imaging: float64
-
+derived:
+  sex:
+    source: sex
+    output: sex_mapped
+    map:
+      1: male
+      2: female
+      "1": male
+      "2": female
+  anxiety:
+    source: t_score
+    output: anx_group
+    thresholds:
+      control_max: 59
+      subclinical_max: 64
+    labels:
+      control: Control
+      subclinical: Subclinical
+      clinical: Clinical
 
 feature_families:
   smri_area:
@@ -81,3 +75,9 @@ feature_families:
     - smri_vol*
   dti:
     - dmri*
+
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+  stratify: anx_group
