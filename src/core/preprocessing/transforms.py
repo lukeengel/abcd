@@ -1,0 +1,54 @@
+"""Column transformations applied during preprocessing."""
+
+from __future__ import annotations
+
+import pandas as pd
+
+
+def recode(env, df: pd.DataFrame) -> pd.DataFrame:
+    """Apply recodings defined in the config (mutates ``df``)."""
+
+    config = env.configs.data
+
+    for mapping_cfg in config["derived"].values():
+        if "map" not in mapping_cfg:
+            continue
+
+        source_col = config["columns"][mapping_cfg["source"]]
+        output_col = mapping_cfg["output"]
+        mapping = mapping_cfg["map"]
+
+        if source_col in df.columns:
+            df.loc[:, output_col] = df[source_col].map(mapping)
+
+    return df
+
+
+def binning(env, df: pd.DataFrame) -> pd.DataFrame:
+    """Create bins from configured thresholds (mutates ``df``)."""
+
+    config = env.configs.data
+
+    for binning_cfg in config["derived"].values():
+        if "thresholds" not in binning_cfg:
+            continue
+
+        score_col = config["columns"][binning_cfg["source"]]
+        if score_col not in df.columns:
+            continue
+
+        thresholds = binning_cfg["thresholds"]
+        labels = binning_cfg["labels"]
+
+        threshold_values = sorted(thresholds.values())
+        bins = [-float("inf")] + threshold_values + [float("inf")]
+        label_list = list(labels.values())
+
+        df.loc[:, binning_cfg["output"]] = pd.cut(
+            df[score_col],
+            bins=bins,
+            labels=label_list,
+            include_lowest=True,
+        )
+
+    return df
