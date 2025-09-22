@@ -51,20 +51,23 @@ columns:
       mrisdp_range: [303, 453]
       prefixes:
         - smri_area_cdk
+        - mrisdp
     smri_thk:
       mrisdp_range: [1, 151]
       prefixes:
         - smri_thk_cdk
+        - mrisdp
     smri_sulc:
       mrisdp_range: [152, 302]
       prefixes:
         - smri_sulc_cdk
+        - mrisdp
     smri_vol:
       mrisdp_range: [454, 604]
       prefixes:
         - smri_vol_cdk
         - smri_vol_scs
-
+        - mrisdp
 timepoints:
   baseline: baseline_year_1_arm_1
   year2: 2_year_follow_up_y_arm_1
@@ -94,21 +97,14 @@ derived:
       subclinical: Subclinical
       clinical: Clinical
 
-feature_families:
-  smri_area:
-    - mrisdp*
-    - smri_area*
-  smri_thk:
-    - mrisdp*
-    - smri_thk*
-  smri_sulc:
-    - mrisdp*
-    - smri_sulc*
-  smri_vol:
-    - mrisdp*
-    - smri_vol*
-  dti:
-    - dmri*
+missing:
+  require_complete_metadata:
+    - age
+    - t_score
+    - scanner_manufacturer
+    - scanner_serial
+  require_complete_families:
+    - dti
 
 splits:
   train: 0.8
