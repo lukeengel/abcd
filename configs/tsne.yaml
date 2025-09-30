@@ -1,0 +1,62 @@
+# t-SNE Analysis Configuration
+
+# Core t-SNE parameters
+complexity: 100  # Perplexity parameter (max complexity)
+n_components: 2
+random_state: 42
+learning_rate: auto
+init: pca
+
+# Plotting parameters
+figure:
+  dpi: 150
+  font_size: 11
+  axes_labelsize: 12
+  axes_titlesize: 14
+  xtick_labelsize: 10
+  ytick_labelsize: 10
+  legend_fontsize: 10
+  figure_titlesize: 16
+
+# Color schemes for different groupings
+colors:
+  anxiety:
+    Control: "#4A90E2"
+    Subclinical: "#F5A623"
+    Clinical: "#7ED321"
+  scanner:
+    SIEMENS: "#E94B3C"
+    "GE MEDICAL SYSTEMS": "#50E3C2"
+    "Philips Medical Systems": "#BD10E0"
+  age:
+    9: "#9013FE"
+    10: "#FF6D00"
+  sex:
+    Male: "#2196F3"
+    Female: "#E91E63"
+    Unknown: "#999999"
+
+# Plot styling
+plots:
+  alpha:
+    control: 0.6
+    highlighted: 0.9
+  size:
+    control: 6
+    highlighted: 12
+  edge:
+    control: null
+    highlighted: "black"
+  linewidth:
+    control: 0
+    highlighted: 0.3
+
+# Imaging feature prefixes to include
+imaging_prefixes:
+  - dmri
+  - smri_area_cdk
+  - smri_thick_cdk
+  - smri_sulc_cdk
+  - smri_vol_cdk
+  - smri_vol_scs
+  - mrisdp
