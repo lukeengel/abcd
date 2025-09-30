@@ -45,14 +45,23 @@ def _write_dataframe(
 
 
 def save_processed_data(env, **datasets: pd.DataFrame) -> None:
-    """Save reusable datasets under data/processed."""
-
-    output_dir = env.repo_root / "data" / "processed"
-    output_dir.mkdir(parents=True, exist_ok=True)
+    """Save baseline(s) globally and all datasets under the run-scoped folder."""
 
     formats = _formats(env)
+
+    shared_dir = env.repo_root / "data" / "processed"
+    shared_dir.mkdir(parents=True, exist_ok=True)
+
+    run_dir = _run_dir(env, "datasets")
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    base_names = {"baseline", "baseline_preqc"}
+
+    print(f"Saving {len(datasets)} datasets to {run_dir}")
     for name, df in datasets.items():
-        _write_dataframe(df, output_dir, name, formats)
+        if name in base_names:
+            _write_dataframe(df, shared_dir, name, formats)
+        _write_dataframe(df, run_dir, name, formats)
 
 
 def save_qc_artifacts(env, merged_df: pd.DataFrame, mask: pd.DataFrame) -> None:
