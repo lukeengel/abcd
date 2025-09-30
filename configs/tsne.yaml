@@ -1,5 +1,8 @@
 # t-SNE Analysis Configuration
 
+# Research question to analyze
+research_question: psychosis  # Options: anxiety, psychosis
+
 # Core t-SNE parameters
 complexity: 100  # Perplexity parameter (max complexity)
 n_components: 2
@@ -24,6 +27,10 @@ colors:
     Control: "#4A90E2"
     Subclinical: "#F5A623"
     Clinical: "#7ED321"
+  psychosis:
+    Control: "#2E8B57"
+    Subclinical: "#FF8C00"
+    Clinical: "#DC143C"
   scanner:
     SIEMENS: "#E94B3C"
     "GE MEDICAL SYSTEMS": "#50E3C2"
