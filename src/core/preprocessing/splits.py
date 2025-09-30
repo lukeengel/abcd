@@ -22,7 +22,7 @@ def timepoint_split(env, df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 def create_modeling_splits(
     env, df: pd.DataFrame
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Stratified train/val/test split using anxiety groups."""
+    """Stratified train/val/test split using research groups."""
 
     config = env.configs.data
     run_cfg = getattr(env.configs, "run", {}) or {}
@@ -38,7 +38,7 @@ def create_modeling_splits(
     )
     ratios /= ratios.sum()
 
-    anxiety_col = config["columns"]["mapping"]["anx_group"]
+    research_col = config["columns"]["mapping"]["research_group"]
     id_col = config["columns"]["mapping"]["id"]
     timepoint_col = config["columns"]["mapping"]["timepoint"]
 
@@ -46,7 +46,7 @@ def create_modeling_splits(
     if qc_pass_df.empty:
         raise ValueError("No QC-pass rows available for splitting")
 
-    labels = qc_pass_df[anxiety_col].astype("string").fillna("unknown")
+    labels = qc_pass_df[research_col].astype("string").fillna("unknown")
 
     sss = StratifiedShuffleSplit(
         n_splits=1,

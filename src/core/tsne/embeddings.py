@@ -49,14 +49,14 @@ def load_or_compute_tsne(
     return embedding
 
 
-def prepare_metadata(baseline_preqc: pd.DataFrame, all_orig: pd.DataFrame) -> dict:
+def prepare_metadata(baseline_preqc: pd.DataFrame, all_orig: pd.DataFrame, env) -> dict:
     """Prepare metadata for all datasets."""
 
     def extract_metadata(df: pd.DataFrame) -> dict:
         return {
             "surface_holes": df["apqc_smri_topo_ndefect"].values,
             "scanner": df["mri_info_manufacturer"].values,
-            "anxiety": df["anx_group"].values,
+            "research_groups": df[env.configs.data["columns"]["mapping"]["research_group"]].values,
             "age": df["demo_brthdat_v2"].astype(int).values,
             "sex": df["demo_sex_v2"].map({1: "Male", 2: "Female"}).fillna("Unknown").values,
         }

@@ -77,7 +77,7 @@ def run_tsne_analysis(env) -> dict:
 
         pbar.set_description("Step 3/6: Preparing metadata")
         # Prepare and save metadata
-        metadata = prepare_metadata(baseline_preqc, all_orig)
+        metadata = prepare_metadata(baseline_preqc, all_orig, env)
         save_metadata(metadata, embeddings_dir)
         pbar.update(1)
 
@@ -89,10 +89,11 @@ def run_tsne_analysis(env) -> dict:
 
         pbar.set_description("Step 5/6: Harmonization plots")
         # Generate harmonization comparison plots
+        research_question = tsne_config["research_question"]
         plot_comparison(
-            embeddings, metadata, 'postqc', 'harmonized', 'anxiety',
-            'Harmonization Impact on Anxiety Group Clustering',
-            tsne_config["colors"]["anxiety"], 'harmonization_anxiety',
+            embeddings, metadata, 'postqc', 'harmonized', 'research_groups',
+            f'Harmonization Impact on {research_question.title()} Group Clustering',
+            tsne_config["colors"][research_question], f'harmonization_{research_question}',
             plots_dir, tsne_config["complexity"], tsne_config["plots"]
         )
 

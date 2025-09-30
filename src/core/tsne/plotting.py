@@ -91,7 +91,7 @@ def plot_comparison(
             mask = groups == group
             color = colors.get(group, '#666666')
 
-            if grouping == 'anxiety':
+            if grouping == 'research_groups':
                 alpha = plot_config['alpha']['control'] if group == 'Control' else plot_config['alpha']['highlighted']
                 size = plot_config['size']['control'] if group == 'Control' else plot_config['size']['highlighted']
                 edge = plot_config['edge']['control'] if group == 'Control' else plot_config['edge']['highlighted']
