@@ -1,0 +1,13 @@
+# Harmonization configuration
+site_column: mri_info_manufacturer
+covariates:
+  - demo_brthdat_v2
+  - demo_sex_v2
+
+# ComBat parameters
+empirical_bayes: true
+reference_site: null
+smooth_terms: []
+
+# Output
+save_model: true
