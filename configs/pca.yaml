@@ -1,0 +1,70 @@
+# PCA Analysis Configuration
+
+# Core PCA parameters
+# n_components can be:
+#   - int (e.g., 50): Keep exactly N components
+#   - float (e.g., 0.95): Keep enough components to explain this % of variance
+n_components: 0.95  # Keep components explaining 95% variance
+whiten: false  # Whether to whiten components (scale to unit variance)
+random_state: 42
+
+# Plotting parameters
+figure:
+  dpi: 150
+  font_size: 11
+  axes_labelsize: 12
+  axes_titlesize: 14
+  xtick_labelsize: 10
+  ytick_labelsize: 10
+  legend_fontsize: 10
+  figure_titlesize: 16
+
+# How many top components to visualize
+plot_top_n: 5  # Plot first 5 principal components
+
+# Color schemes (reuse from tsne.yaml)
+colors:
+  anxiety:
+    Control: "#4A90E2"
+    Subclinical: "#F5A623"
+    Clinical: "#7ED321"
+  psychosis:
+    Control: "#2E8B57"
+    Subclinical: "#FF8C00"
+    Clinical: "#DC143C"
+  scanner:
+    SIEMENS: "#E94B3C"
+    "GE MEDICAL SYSTEMS": "#50E3C2"
+    "Philips Medical Systems": "#BD10E0"
+  age:
+    9: "#9013FE"
+    10: "#FF6D00"
+  sex:
+    Male: "#2196F3"
+    Female: "#E91E63"
+    Unknown: "#999999"
+
+# Plot styling
+plots:
+  alpha:
+    control: 0.6
+    highlighted: 0.9
+  size:
+    control: 6
+    highlighted: 12
+  edge:
+    control: null
+    highlighted: "black"
+  linewidth:
+    control: 0
+    highlighted: 0.3
+
+# Imaging feature prefixes to include
+imaging_prefixes:
+  - dmri
+  - smri_area_cdk
+  - smri_thick_cdk
+  - smri_sulc_cdk
+  - smri_vol_cdk
+  - smri_vol_scs
+  - mrisdp
