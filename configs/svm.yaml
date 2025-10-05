@@ -1,0 +1,52 @@
+# SVM Classification Configuration
+
+# Cross-validation settings
+cv:
+  n_splits: 5
+  shuffle: true
+
+# SVM hyperparameters (single run values)
+model:
+  kernel: linear
+  C: 1.0
+  class_weight: balanced
+  max_iter: 10000
+
+# Hyperparameter sweep (optional - for grid search)
+sweep:
+  enabled: false  # Set to true to run hyperparameter search
+  param_grid:
+    C: [0.01, 0.1, 1.0, 10.0, 100.0]
+    kernel: [linear, rbf]
+    # class_weight is always 'balanced' (not swept)
+
+# Classification tasks
+# Note: Dynamically uses research question from run.yaml
+tasks:
+  - name: any_vs_control
+    positive_classes: [Clinical, Subclinical]
+    negative_class: Control
+  - name: clinical_vs_control
+    positive_class: Clinical
+    negative_class: Control
+  - name: subclinical_vs_control
+    positive_class: Subclinical
+    negative_class: Control
+  - name: clinical_vs_subclinical
+    positive_class: Clinical
+    negative_class: Subclinical
+
+# Feature importance settings
+interpretation:
+  top_n_pcs: 10
+  top_n_features: 20
+
+# Imaging feature prefixes to include
+imaging_prefixes:
+  - dmri
+  - smri_area_cdk
+  - smri_thick_cdk
+  - smri_sulc_cdk
+  - smri_vol_cdk
+  - smri_vol_scs
+  - mrisdp
