@@ -69,18 +69,24 @@ def run_tsne_analysis(env) -> dict:
         plots_dir.mkdir(parents=True, exist_ok=True)
 
         # Compute all embeddings
+        seed = run_cfg["seed"]
         embeddings = {
             "preqc": load_or_compute_tsne(
                 baseline_preqc[imaging_cols].values,
                 "preqc",
                 embeddings_dir,
                 tsne_config,
+                seed,
             ),
             "postqc": load_or_compute_tsne(
-                all_orig[imaging_cols].values, "postqc", embeddings_dir, tsne_config
+                all_orig[imaging_cols].values,
+                "postqc",
+                embeddings_dir,
+                tsne_config,
+                seed,
             ),
             "harmonized": load_or_compute_tsne(
-                all_harm, "harmonized", embeddings_dir, tsne_config
+                all_harm, "harmonized", embeddings_dir, tsne_config, seed
             ),
         }
         pbar.update(1)

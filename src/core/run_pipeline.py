@@ -6,6 +6,7 @@ from .config import initialize_notebook
 from .preprocessing.pipeline import preprocess_abcd_data
 from .harmonize.pipeline import run_harmonization_pipeline
 from .tsne.pipeline import run_tsne_analysis
+from .pca.pipeline import run_pca_analysis
 
 
 def main():
@@ -25,6 +26,9 @@ def main():
 
     print("Step 3: t-SNE Analysis...")
     run_tsne_analysis(env)
+
+    print("Step 4: PCA Analysis...")
+    run_pca_analysis(env)
 
     run_path = f"outputs/{env.configs.run['run_name']}/{env.configs.run['run_id']}"
     print(f"Complete. Results in: {run_path}")
