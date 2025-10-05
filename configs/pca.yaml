@@ -6,7 +6,6 @@
 #   - float (e.g., 0.95): Keep enough components to explain this % of variance
 n_components: 0.95  # Keep components explaining 95% variance
 whiten: false  # Whether to whiten components (scale to unit variance)
-random_state: 42
 
 # Plotting parameters
 figure:

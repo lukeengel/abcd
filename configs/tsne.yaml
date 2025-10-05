@@ -4,7 +4,6 @@
 # Core t-SNE parameters
 complexity: 100  # Perplexity parameter (max complexity)
 n_components: 2
-random_state: 42
 learning_rate: auto
 init: pca
 

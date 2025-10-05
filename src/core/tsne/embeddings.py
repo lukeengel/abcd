@@ -17,7 +17,7 @@ def get_imaging_columns(df: pd.DataFrame, prefixes: list[str]) -> list[str]:
 
 
 def load_or_compute_tsne(
-    X: np.ndarray, name: str, embeddings_dir: Path, tsne_config: dict
+    X: np.ndarray, name: str, embeddings_dir: Path, tsne_config: dict, seed: int
 ) -> np.ndarray:
     """Load existing t-SNE embedding or compute if needed."""
     complexity = tsne_config["complexity"]
@@ -36,7 +36,7 @@ def load_or_compute_tsne(
 
     tsne = TSNE(
         n_components=tsne_config["n_components"],
-        random_state=tsne_config["random_state"],
+        random_state=seed,
         perplexity=perplexity,
         learning_rate=tsne_config["learning_rate"],
         init=tsne_config["init"],
