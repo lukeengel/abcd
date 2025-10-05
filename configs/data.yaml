@@ -4,6 +4,7 @@ files:
     - data/raw/mh_p_cbcl.csv
     - data/raw/mri_y_adm_info.csv
     - data/raw/mri_y_qc_auto_post.csv
+    - data/raw/RVI_groups.csv
   imaging:
     - data/raw/mri_y_dti_fa_is_at.csv
     - data/raw/mri_y_dti_ld_is_at.csv
@@ -27,7 +28,7 @@ columns:
     sex_mapped: sex_mapped
     age: demo_brthdat_v2
     t_score: cbcl_scr_dsm5_anxdisord_t
-    anx_group: anx_group
+    research_group: anx_group  # Automatically set by config.py based on run_name
     scanner_manufacturer: mri_info_manufacturer
     scanner_serial: mri_info_deviceserialnumber
     qc: apqc_smri_topo_ndefect
@@ -40,9 +41,10 @@ columns:
     - mri_info_manufacturer
     - mri_info_deviceserialnumber
     - apqc_smri_topo_ndefect
+    # group_last_final automatically added for psychosis runs by config.py
   derived:
     - sex_mapped
-    - anx_group
+    - anx_group  # Automatically set by config.py based on run_name
   imaging:
     dti:
       prefixes:
@@ -96,6 +98,20 @@ derived:
       control: Control
       subclinical: Subclinical
       clinical: Clinical
+  psychosis:
+    source: group_last_final  # Assuming column name in RVI_groups.csv
+    output: psych_group
+    map:
+      1: Clinical
+      2: Subclinical
+      3: Subclinical
+      4: Subclinical
+      5: Control
+      "1": Clinical
+      "2": Subclinical
+      "3": Subclinical
+      "4": Subclinical
+      "5": Control
 
 missing:
   require_complete_metadata:
@@ -103,6 +119,7 @@ missing:
     - t_score
     - scanner_manufacturer
     - scanner_serial
+    - research_group  # Will use anx_group or psych_group based on mapping above
   require_complete_families:
     - dti
 
@@ -110,4 +127,4 @@ splits:
   train: 0.8
   val: 0.1
   test: 0.1
-  stratify: anx_group
+  stratify: research_group  # Will use the configured research question grouping

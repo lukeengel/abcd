@@ -20,7 +20,13 @@ def run_tsne_analysis(env) -> dict:
 
     tsne_config = env.configs.tsne
     run_cfg = env.configs.run
-    data_dir = env.repo_root / "outputs" / run_cfg["run_name"] / run_cfg["run_id"] / f"seed_{run_cfg['seed']}"
+    data_dir = (
+        env.repo_root
+        / "outputs"
+        / run_cfg["run_name"]
+        / run_cfg["run_id"]
+        / f"seed_{run_cfg['seed']}"
+    )
 
     # Setup plotting style
     setup_plotting_style(tsne_config["figure"])
@@ -36,10 +42,11 @@ def run_tsne_analysis(env) -> dict:
         dynamic_ncols=True,
         file=None,
     ) as pbar:
-
         pbar.set_description("Step 1/6: Loading data")
         # Load all datasets
-        baseline_preqc = pd.read_parquet(data_dir / "datasets" / "baseline_preqc.parquet")
+        baseline_preqc = pd.read_parquet(
+            data_dir / "datasets" / "baseline_preqc.parquet"
+        )
         train_orig = pd.read_parquet(data_dir / "datasets" / "train.parquet")
         val_orig = pd.read_parquet(data_dir / "datasets" / "val.parquet")
         test_orig = pd.read_parquet(data_dir / "datasets" / "test.parquet")
@@ -63,61 +70,95 @@ def run_tsne_analysis(env) -> dict:
 
         # Compute all embeddings
         embeddings = {
-            'preqc': load_or_compute_tsne(
-                baseline_preqc[imaging_cols].values, 'preqc', embeddings_dir, tsne_config
+            "preqc": load_or_compute_tsne(
+                baseline_preqc[imaging_cols].values,
+                "preqc",
+                embeddings_dir,
+                tsne_config,
             ),
-            'postqc': load_or_compute_tsne(
-                all_orig[imaging_cols].values, 'postqc', embeddings_dir, tsne_config
+            "postqc": load_or_compute_tsne(
+                all_orig[imaging_cols].values, "postqc", embeddings_dir, tsne_config
             ),
-            'harmonized': load_or_compute_tsne(
-                all_harm, 'harmonized', embeddings_dir, tsne_config
-            )
+            "harmonized": load_or_compute_tsne(
+                all_harm, "harmonized", embeddings_dir, tsne_config
+            ),
         }
         pbar.update(1)
 
         pbar.set_description("Step 3/6: Preparing metadata")
         # Prepare and save metadata
-        metadata = prepare_metadata(baseline_preqc, all_orig)
-        save_metadata(metadata, embeddings_dir)
+        research_question = run_cfg["run_name"]  # Get research question from run config
+        metadata = prepare_metadata(baseline_preqc, all_orig, env)
+        save_metadata(metadata, embeddings_dir, research_question)
         pbar.update(1)
 
         pbar.set_description("Step 4/6: QC comparison plots")
         # Generate QC comparison plot
         qc_threshold = env.configs.data["qc_thresholds"]["surface_holes_max"]
-        plot_qc_comparison(embeddings, metadata, plots_dir, tsne_config["complexity"], qc_threshold)
+        plot_qc_comparison(
+            embeddings, metadata, plots_dir, tsne_config["complexity"], qc_threshold
+        )
         pbar.update(1)
 
         pbar.set_description("Step 5/6: Harmonization plots")
         # Generate harmonization comparison plots
         plot_comparison(
-            embeddings, metadata, 'postqc', 'harmonized', 'anxiety',
-            'Harmonization Impact on Anxiety Group Clustering',
-            tsne_config["colors"]["anxiety"], 'harmonization_anxiety',
-            plots_dir, tsne_config["complexity"], tsne_config["plots"]
+            embeddings,
+            metadata,
+            "postqc",
+            "harmonized",
+            "research_groups",
+            f"Harmonization Impact on {research_question.title()} Group Clustering",
+            tsne_config["colors"][research_question],
+            f"harmonization_{research_question}",
+            plots_dir,
+            tsne_config["complexity"],
+            tsne_config["plots"],
         )
 
         plot_comparison(
-            embeddings, metadata, 'postqc', 'harmonized', 'scanner',
-            'Harmonization Impact on Scanner Effects',
-            tsne_config["colors"]["scanner"], 'harmonization_scanner',
-            plots_dir, tsne_config["complexity"], tsne_config["plots"]
+            embeddings,
+            metadata,
+            "postqc",
+            "harmonized",
+            "scanner",
+            "Harmonization Impact on Scanner Effects",
+            tsne_config["colors"]["scanner"],
+            "harmonization_scanner",
+            plots_dir,
+            tsne_config["complexity"],
+            tsne_config["plots"],
         )
         pbar.update(1)
 
         pbar.set_description("Step 6/6: Demographics plots")
         # Generate demographics plots
         plot_comparison(
-            embeddings, metadata, 'postqc', 'harmonized', 'age',
-            'Age Distribution in t-SNE Space',
-            tsne_config["colors"]["age"], 'demographics_age',
-            plots_dir, tsne_config["complexity"], tsne_config["plots"]
+            embeddings,
+            metadata,
+            "postqc",
+            "harmonized",
+            "age",
+            "Age Distribution in t-SNE Space",
+            tsne_config["colors"]["age"],
+            "demographics_age",
+            plots_dir,
+            tsne_config["complexity"],
+            tsne_config["plots"],
         )
 
         plot_comparison(
-            embeddings, metadata, 'postqc', 'harmonized', 'sex',
-            'Sex Distribution in t-SNE Space',
-            tsne_config["colors"]["sex"], 'demographics_sex',
-            plots_dir, tsne_config["complexity"], tsne_config["plots"]
+            embeddings,
+            metadata,
+            "postqc",
+            "harmonized",
+            "sex",
+            "Sex Distribution in t-SNE Space",
+            tsne_config["colors"]["sex"],
+            "demographics_sex",
+            plots_dir,
+            tsne_config["complexity"],
+            tsne_config["plots"],
         )
         pbar.update(1)
 
@@ -128,8 +169,8 @@ def run_tsne_analysis(env) -> dict:
     print(f"  - t-SNE complexity: {tsne_config['complexity']}")
 
     return {
-        'embeddings': embeddings,
-        'metadata': metadata,
-        'plots_dir': plots_dir,
-        'embeddings_dir': embeddings_dir
+        "embeddings": embeddings,
+        "metadata": metadata,
+        "plots_dir": plots_dir,
+        "embeddings_dir": embeddings_dir,
     }

@@ -1,4 +1,5 @@
 # t-SNE Analysis Configuration
+# Note: Research question is now set in run.yaml (run_name)
 
 # Core t-SNE parameters
 complexity: 100  # Perplexity parameter (max complexity)
@@ -24,6 +25,10 @@ colors:
     Control: "#4A90E2"
     Subclinical: "#F5A623"
     Clinical: "#7ED321"
+  psychosis:
+    Control: "#2E8B57"
+    Subclinical: "#FF8C00"
+    Clinical: "#DC143C"
   scanner:
     SIEMENS: "#E94B3C"
     "GE MEDICAL SYSTEMS": "#50E3C2"
