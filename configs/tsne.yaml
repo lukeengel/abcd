@@ -1,7 +1,5 @@
 # t-SNE Analysis Configuration
-
-# Research question to analyze
-research_question: psychosis  # Options: anxiety, psychosis
+# Note: Research question is now set in run.yaml (run_name)
 
 # Core t-SNE parameters
 complexity: 100  # Perplexity parameter (max complexity)

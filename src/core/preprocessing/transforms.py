@@ -15,7 +15,9 @@ def recode(env, df: pd.DataFrame) -> pd.DataFrame:
         if "map" not in mapping_cfg:
             continue
 
-        source_col = column_map[mapping_cfg["source"]]
+        source_key = mapping_cfg["source"]
+        # Check if source is a mapping key or a direct column name
+        source_col = column_map.get(source_key, source_key)
         output_col = mapping_cfg["output"]
         value_map = mapping_cfg["map"]
 

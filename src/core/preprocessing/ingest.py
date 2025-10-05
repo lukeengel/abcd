@@ -43,6 +43,7 @@ def load_and_merge(env) -> pd.DataFrame:
     files_cfg = config["files"]
     id_col = columns_cfg["id"]
     timepoint_col = columns_cfg["timepoint"]
+    baseline_value = config["timepoints"]["baseline"]
 
     merged: pd.DataFrame | None = None
     for file in files_cfg["metadata"] + files_cfg["imaging"]:
@@ -56,6 +57,13 @@ def load_and_merge(env) -> pd.DataFrame:
             cols_to_read = None
 
         df = pd.read_csv(path, usecols=cols_to_read, engine="python")
+
+        # Handle baseline-only files (e.g., RVI_groups.csv) that lack eventname column
+        if timepoint_col not in df.columns:
+            df[timepoint_col] = baseline_value
+            print(
+                f"Added {timepoint_col}={baseline_value} to {file} (baseline-only data)"
+            )
 
         if merged is None:
             merged = df
