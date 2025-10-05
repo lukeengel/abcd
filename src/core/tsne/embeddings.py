@@ -49,16 +49,21 @@ def load_or_compute_tsne(
     return embedding
 
 
-def prepare_metadata(baseline_preqc: pd.DataFrame, all_orig: pd.DataFrame) -> dict:
+def prepare_metadata(baseline_preqc: pd.DataFrame, all_orig: pd.DataFrame, env) -> dict:
     """Prepare metadata for all datasets."""
 
     def extract_metadata(df: pd.DataFrame) -> dict:
         return {
             "surface_holes": df["apqc_smri_topo_ndefect"].values,
             "scanner": df["mri_info_manufacturer"].values,
-            "anxiety": df["anx_group"].values,
+            "research_groups": df[
+                env.configs.data["columns"]["mapping"]["research_group"]
+            ].values,
             "age": df["demo_brthdat_v2"].astype(int).values,
-            "sex": df["demo_sex_v2"].map({1: "Male", 2: "Female"}).fillna("Unknown").values,
+            "sex": df["demo_sex_v2"]
+            .map({1: "Male", 2: "Female"})
+            .fillna("Unknown")
+            .values,
         }
 
     return {
@@ -68,8 +73,15 @@ def prepare_metadata(baseline_preqc: pd.DataFrame, all_orig: pd.DataFrame) -> di
     }
 
 
-def save_metadata(metadata: dict, embeddings_dir: Path) -> None:
-    """Save metadata to disk."""
+def save_metadata(metadata: dict, embeddings_dir: Path, research_question: str) -> None:
+    """Save metadata with research question aliases for compatibility."""
+    # Add aliases so notebook can access by research question name
+    enhanced_metadata = {}
+    for phase_key, phase_data in metadata.items():
+        enhanced_metadata[phase_key] = phase_data.copy()
+        # Create alias: metadata['postqc']['anxiety'] -> research_groups
+        enhanced_metadata[phase_key][research_question] = phase_data["research_groups"]
+
     metadata_path = embeddings_dir / "metadata.pkl"
     with open(metadata_path, "wb") as f:
-        pickle.dump(metadata, f)
+        pickle.dump(enhanced_metadata, f)
