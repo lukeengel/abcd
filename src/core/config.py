@@ -33,6 +33,9 @@ def initialize_notebook(
 
     loaded_configs.run = run_cfg
 
+    # Adapt data config based on research question
+    _adapt_data_config(loaded_configs.data, run_cfg["run_name"])
+
     env = SimpleNamespace(
         repo_root=repo_root,
         configs=loaded_configs,
@@ -42,6 +45,36 @@ def initialize_notebook(
     print(f"Initialized notebook for run '{run_cfg['run_name']}'")
     print(f"Saved output summary to {output_dir}")
     return env
+
+
+def _adapt_data_config(data_config: dict, run_name: str) -> None:
+    """Adapt data configuration based on research question."""
+
+    # Supported research questions
+    valid_questions = ["anxiety", "psychosis"]
+
+    if run_name not in valid_questions:
+        raise ValueError(
+            f"Unknown research question: '{run_name}'. "
+            f"Supported options: {', '.join(valid_questions)}. "
+            f"To add a new research question, update _adapt_data_config() "
+            f"in src/core/config.py and add color scheme in configs/tsne.yaml"
+        )
+
+    if run_name == "psychosis":
+        # Psychosis: use psych_group derived from group_last_final
+        data_config["columns"]["mapping"]["research_group"] = "psych_group"
+        data_config["columns"]["derived"] = ["sex_mapped", "psych_group"]
+        # Ensure group_last_final is in metadata
+        if "group_last_final" not in data_config["columns"]["metadata"]:
+            data_config["columns"]["metadata"].append("group_last_final")
+    elif run_name == "anxiety":
+        # Anxiety: use anx_group derived from t_score
+        data_config["columns"]["mapping"]["research_group"] = "anx_group"
+        data_config["columns"]["derived"] = ["sex_mapped", "anx_group"]
+        # Remove group_last_final from metadata if present
+        if "group_last_final" in data_config["columns"]["metadata"]:
+            data_config["columns"]["metadata"].remove("group_last_final")
 
 
 def _set_dir():
