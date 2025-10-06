@@ -13,10 +13,10 @@ baseline:
   penalty: l2
   C: 1.0
 
-# SVM hyperparameters
+# SVM hyperparameters (optimized via W&B sweep)
 model:
-  kernel: linear
-  C: 0.1
+  kernel: rbf
+  C: 0.1324
   gamma: scale
   class_weight: balanced
   max_iter: -1

@@ -28,9 +28,12 @@ def get_feature_importance_linear(model, feature_names: list[str]) -> pd.DataFra
 
 
 def get_feature_importance_permutation(
-    model, X, y, feature_names: list[str], seed: int, n_repeats: int = 5
+    model, X, y, feature_names: list[str], seed: int, n_repeats: int = 10
 ) -> pd.DataFrame:
-    """Compute permutation importance for any model (linear or RBF)."""
+    """Compute permutation importance for any model (linear or RBF).
+
+    Uses 10 repeats for robust importance estimates with confidence intervals.
+    """
     result = permutation_importance(
         model,
         X,
