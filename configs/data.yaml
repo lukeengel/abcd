@@ -5,6 +5,7 @@ files:
     - data/raw/mri_y_adm_info.csv
     - data/raw/mri_y_qc_auto_post.csv
     - data/raw/RVI_groups.csv
+  data_dictionary: data/raw/Data Dictionary.csv
   imaging:
     - data/raw/mri_y_dti_fa_is_at.csv
     - data/raw/mri_y_dti_ld_is_at.csv

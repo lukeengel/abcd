@@ -24,3 +24,11 @@ htmlcov/
 # Temporary files
 *.tmp
 *.temp
+
+# W&B
+wandb/
+
+# SLURM logs
+logs/
+*.out
+*.err
