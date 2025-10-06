@@ -5,20 +5,37 @@ cv:
   n_splits: 5
   shuffle: true
 
-# SVM hyperparameters (single run values)
+# Baseline (Logistic Regression) hyperparameters
+baseline:
+  class_weight: balanced
+  max_iter: 2000
+  solver: lbfgs
+  penalty: l2
+  C: 1.0
+
+# SVM hyperparameters
 model:
   kernel: linear
-  C: 1.0
+  C: 0.1
+  gamma: scale
   class_weight: balanced
-  max_iter: 10000
+  max_iter: -1
+  tol: 0.001
 
 # Hyperparameter sweep (optional - for grid search)
 sweep:
   enabled: false  # Set to true to run hyperparameter search
   param_grid:
-    C: [0.01, 0.1, 1.0, 10.0, 100.0]
-    kernel: [linear, rbf]
-    # class_weight is always 'balanced' (not swept)
+    # Grid 1: Linear kernel (no gamma needed)
+    - kernel: [linear]
+      C: [0.01, 0.1, 1.0, 10.0]
+
+    # Grid 2: RBF kernel (with gamma)
+    - kernel: [rbf]
+      C: [0.01, 0.1, 1.0, 10.0]
+      gamma: [scale, auto, 0.01, 0.1]
+
+  # class_weight is always 'balanced' (not swept)
 
 # Classification tasks
 # Note: Dynamically uses research question from run.yaml
