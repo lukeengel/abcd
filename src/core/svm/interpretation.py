@@ -34,6 +34,9 @@ def get_feature_importance_permutation(
 
     Uses 10 repeats for robust importance estimates with confidence intervals.
     """
+    n_features = len(feature_names)
+    print(f"Computing permutation importance ({n_repeats} repeats, {n_features} features)...")
+
     result = permutation_importance(
         model,
         X,
@@ -43,6 +46,8 @@ def get_feature_importance_permutation(
         n_jobs=-1,
         scoring="balanced_accuracy",
     )
+
+    print("Permutation importance complete!")
 
     df = pd.DataFrame(
         {
