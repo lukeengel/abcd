@@ -10,7 +10,6 @@ from tqdm import tqdm
 from .evaluation import compute_confusion_matrix, compute_metrics, get_cv_splitter
 from .feature_mapping import enrich_brain_regions
 from .interpretation import (
-    get_feature_importance_linear,
     get_feature_importance_permutation,
     map_pca_to_brain_regions,
 )
@@ -152,6 +151,7 @@ def run_final_model(
         "model": model,
         "pipeline": pipeline,
         "X_test_pca": X_test_pca,
+        "y_test": y_test,
         "y_pred": y_pred_test,
     }
 
@@ -253,18 +253,13 @@ def run_task(
             plots_dir / f"cm_svm_{task_name}.png",
         )
 
-        # Feature importance
+        # Feature importance (using permutation for all kernels for consistency)
         n_components = svm_final["pipeline"]["n_components"]
         pca_features = [f"PC{i+1}" for i in range(n_components)]
 
-        if svm_config["model"]["kernel"] == "linear":
-            svm_importance = get_feature_importance_linear(
-                svm_final["model"], pca_features
-            )
-        else:
-            svm_importance = get_feature_importance_permutation(
-                svm_final["model"], X_test_pca, y_test, pca_features, seed
-            )
+        svm_importance = get_feature_importance_permutation(
+            svm_final["model"], X_test_pca, y_test, pca_features, seed
+        )
 
         plot_feature_importance(
             svm_importance,

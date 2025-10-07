@@ -15,8 +15,8 @@ baseline:
 
 # SVM hyperparameters (optimized via W&B sweep)
 model:
-  kernel: rbf
-  C: 0.1324
+  kernel: linear
+  C: 1.0
   gamma: scale
   class_weight: balanced
   max_iter: -1
