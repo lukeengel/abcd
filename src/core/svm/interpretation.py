@@ -35,7 +35,10 @@ def get_feature_importance_permutation(
     Uses 10 repeats for robust importance estimates with confidence intervals.
     """
     n_features = len(feature_names)
-    print(f"Computing permutation importance ({n_repeats} repeats, {n_features} features)...")
+    print(
+        f"Computing permutation importance "
+        f"({n_repeats} repeats, {n_features} features)..."
+    )
 
     result = permutation_importance(
         model,
@@ -56,6 +59,72 @@ def get_feature_importance_permutation(
             "importance_std": result.importances_std,
         }
     )
+    return df.sort_values("importance", ascending=False).reset_index(drop=True)
+
+
+def get_cv_feature_importance(
+    fold_results: list, seed: int, n_repeats: int = 3
+) -> pd.DataFrame:
+    """Compute averaged permutation importance across CV folds.
+
+    Args:
+        fold_results: List of fold result dicts with 'model', 'X_val_pca',
+            'y_val', 'pipeline'
+        seed: Random seed
+        n_repeats: Number of permutation repeats per fold
+
+    Returns:
+        DataFrame with aggregated importance across folds
+    """
+    n_folds = len(fold_results)
+    n_components = fold_results[0]["pipeline"]["n_components"]
+    feature_names = [f"PC{i+1}" for i in range(n_components)]
+
+    # Store importance from each fold
+    fold_importances = []
+
+    for fold_idx, fold in enumerate(fold_results):
+        print(
+            f"Fold {fold_idx + 1}/{n_folds}: Computing permutation importance "
+            f"({n_repeats} repeats, {n_components} features)..."
+        )
+
+        result = permutation_importance(
+            fold["model"],
+            fold["X_val_pca"],
+            fold["y_val"],
+            n_repeats=n_repeats,
+            random_state=seed + fold_idx,
+            n_jobs=-1,
+            scoring="balanced_accuracy",
+        )
+
+        print("Permutation importance complete!")
+
+        fold_importances.append(
+            {"mean": result.importances_mean, "std": result.importances_std}
+        )
+
+    # Aggregate across folds
+    importance_means = np.array([f["mean"] for f in fold_importances])
+    importance_stds = np.array([f["std"] for f in fold_importances])
+
+    # Average importance across folds
+    avg_importance = importance_means.mean(axis=0)
+    # Average std within folds
+    avg_std = importance_stds.mean(axis=0)
+    # Std of importance across folds
+    fold_std = importance_means.std(axis=0)
+
+    df = pd.DataFrame(
+        {
+            "feature": feature_names,
+            "importance": avg_importance,
+            "importance_std": avg_std,  # Uncertainty within each fold
+            "fold_std": fold_std,  # Variability across folds
+        }
+    )
+
     return df.sort_values("importance", ascending=False).reset_index(drop=True)
 
 

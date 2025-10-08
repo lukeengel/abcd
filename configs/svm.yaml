@@ -13,10 +13,16 @@ baseline:
   penalty: l2
   C: 1.0
 
+# Feature selection (alternative to PCA for RBF kernel)
+feature_selection:
+  enabled: false  # Set true to use SelectKBest instead of PCA
+  k: 400  # Number of top features to select
+  score_func: f_classif  # ANOVA F-test for feature scoring
+
 # SVM hyperparameters (optimized via W&B sweep)
 model:
   kernel: linear
-  C: 1.0
+  C: 0.1
   gamma: scale
   class_weight: balanced
   max_iter: -1
@@ -53,10 +59,17 @@ tasks:
     positive_class: Clinical
     negative_class: Subclinical
 
+# Evaluation settings
+evaluation:
+  bootstrap:
+    enabled: true
+    iterations: 1000
+
 # Feature importance settings
 interpretation:
   top_n_pcs: 10
   top_n_features: 20
+  n_repeats: 3 # Permutation repeats per fold (n repeats × 5 folds = total)
 
 # Imaging feature prefixes to include
 imaging_prefixes:
