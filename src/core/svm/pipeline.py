@@ -14,7 +14,7 @@ from .interpretation import (
     map_pca_to_brain_regions,
 )
 from .models import create_baseline, create_svm
-from .preprocessing import preprocess_fold
+from .preprocessing import apply_pca_to_fold
 from .visualization import (
     plot_confusion_matrix,
     plot_feature_importance,
@@ -62,9 +62,10 @@ def run_nested_cv(
     model,
     env,
     seed: int,
+    fitted_pipeline: dict = None,
     use_wandb: bool = False,
 ) -> dict:
-    """Run nested cross-validation with full preprocessing per fold."""
+    """Run nested cross-validation with pre-fitted PCA applied to all folds."""
     cv = get_cv_splitter(env.configs.svm, seed)
     fold_results = []
 
@@ -76,10 +77,11 @@ def run_nested_cv(
         y_train_fold = y[train_idx]
         y_val_fold = y[val_idx]
 
-        # Nested preprocessing
-        X_train_pca, X_val_pca, pipeline = preprocess_fold(
-            train_df_fold, val_df_fold, env, seed
+        # Apply pre-fitted PCA pipeline (same transformation for all folds)
+        X_train_pca, X_val_pca = apply_pca_to_fold(
+            train_df_fold, val_df_fold, fitted_pipeline, env
         )
+        pipeline = fitted_pipeline
 
         # Train model
         model.fit(X_train_pca, y_train_fold)
@@ -96,12 +98,23 @@ def run_nested_cv(
         metrics["n_components"] = pipeline["n_components"]
         metrics["variance_explained"] = pipeline["variance_explained"]
 
-        fold_results.append(metrics)
+        # Store fold data for feature importance (with deep copy of model)
+        import copy
 
-    # Aggregate across folds
+        fold_results.append(
+            {
+                "metrics": metrics,
+                "model": copy.deepcopy(model),
+                "X_val_pca": X_val_pca,
+                "y_val": y_val_fold,
+                "pipeline": pipeline,
+            }
+        )
+
+    # Aggregate metrics across folds
     aggregated = {}
-    for key in fold_results[0].keys():
-        values = [fold[key] for fold in fold_results]
+    for key in fold_results[0]["metrics"].keys():
+        values = [fold["metrics"][key] for fold in fold_results]
         aggregated[f"{key}_mean"] = np.mean(values)
         aggregated[f"{key}_std"] = np.std(values)
 
@@ -123,11 +136,13 @@ def run_final_model(
     seed: int,
     task_name: str,
     svm_dir: Path,
+    fitted_pipeline: dict = None,
     save_model: bool = True,
 ) -> dict:
     """Train final model on full dev set, evaluate on test set."""
-    # Preprocess dev + test
-    X_dev_pca, X_test_pca, pipeline = preprocess_fold(dev_df, test_df, env, seed)
+    # Apply pre-fitted PCA to dev and test
+    X_dev_pca, X_test_pca = apply_pca_to_fold(dev_df, test_df, fitted_pipeline, env)
+    pipeline = fitted_pipeline
 
     # Train final model
     model.fit(X_dev_pca, y_dev)

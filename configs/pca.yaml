@@ -4,7 +4,7 @@
 # n_components can be:
 #   - int (e.g., 50): Keep exactly N components
 #   - float (e.g., 0.95): Keep enough components to explain this % of variance
-n_components: 100  # Keep components explaining 90% variance
+n_components: 29  # Keep components explaining 90% variance
 whiten: false  # Whether to whiten components (scale to unit variance)
 
 # Plotting parameters
