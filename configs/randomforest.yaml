@@ -1,22 +1,28 @@
+use_pca: false
 tuning:
   enabled: true
   cv_folds: 3  # Fewer folds = more samples per validation fold (better for small minority class)
-  scoring: average_precision  # PR-AUC - better for imbalanced data than ROC-AUC
-  fbeta_beta: 0.6  # For threshold optimization: beta=1 is F1 (equal precision/recall balance)
+  scoring: roc_auc  # PR-AUC - better for imbalanced data average_precision, roc_auc, balanced_accuracy
+  fbeta_beta: 0.65  # For threshold optimization: beta=1 is F1 (equal precision/recall balance) was 0.7
   n_jobs: -1
   param_grid:
-    C:
-    - 0.05  # Removed 0.005 (too strong, causes collapse)
-    - 0.1
-    kernel:
-    - rbf
-    gamma:
-    - scale
-
+    n_estimators:
+    - 400
+    max_depth:
+    - 10
+    min_samples_leaf:
+    - 30
+    min_samples_split:
+    - 10
+    max_features:
+    - sqrt
     class_weight:
-    - balanced  # Removed fixed weights that fail, just use auto-balanced
+    #- balanced  # Auto-calculates optimal weight
+    - 0: 1.0
+      1: 4.0
     - 0: 1.0
       1: 1.0
+
 cv:
   n_outer_splits: 5
   inner_val_ratio: 0.25
@@ -28,35 +34,17 @@ baseline:
   penalty: l2
   C: 0.1  # Stronger regularization for imbalanced data
 model:
-  kernel: rbf
-  C: 0.05
-  gamma: scale
+  n_estimators: 500
+  max_depth: 20  # Increased from 8 - allow more complex patterns
+  min_samples_split: 20  # Reduced from 40 - less restrictive
+  min_samples_leaf: 10  # Reduced from 40 - allow finer splits
+  max_features: sqrt
   class_weight: balanced
-  probability: false
-  max_iter: -1
-  tol: 0.001
-sweep:
-  enabled: false
-  param_grid:
-  - kernel:
-    - linear
-    C:
-    - 0.01
-    - 0.1
-    - 1.0
-    - 10.0
-  - kernel:
-    - rbf
-    C:
-    - 0.01
-    - 0.1
-    - 1.0
-    - 10.0
-    gamma:
-    - scale
-    - auto
-    - 0.01
-    - 0.1
+  bootstrap: true
+  oob_score: true
+  n_jobs: -1
+  random_state: null
+  max_samples: 0.8  # Increased from 0.7 - use more data per tree
 tasks:
 - name: any_vs_control
   positive_classes:
@@ -76,7 +64,7 @@ evaluation:
   bootstrap:
     enabled: true
     iterations: 1000
-  decision_threshold: 0.05  # Changed from 0.10 - optimize for recall
+  decision_threshold: 0.05  # Set to best F2 threshold from analysis
   threshold_metric: fbeta  # F-beta with beta=1.0 balances precision and recall
   threshold_search:
     enabled: true
@@ -96,9 +84,8 @@ evaluation:
     - 0.40
     - 0.50
 interpretation:
-  top_n_pcs: 10
   top_n_features: 20
-  n_repeats: 3
+  permutation_importance: false
 imaging_prefixes:
 - dmri
 - smri_area_cdk

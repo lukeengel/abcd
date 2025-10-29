@@ -33,11 +33,28 @@ def fit_pca_on_dev(dev_df: pd.DataFrame, env, seed: int) -> dict:
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_harm)
 
-    # PCA
-    n_components = pca_config.get("n_components", 0.90)
+    # PCA configuration
+    n_components_config = pca_config.get("n_components", 0.90)
+
     whiten = pca_config.get("whiten", False)
-    pca = PCA(n_components=n_components, whiten=whiten, random_state=seed)
+    pca = PCA(n_components=n_components_config, whiten=whiten, random_state=seed)
     pca.fit(X_scaled)
+
+    # Filter components by minimum variance threshold (optional)
+    min_variance = pca_config.get("min_component_variance", None)
+
+    if min_variance is not None:
+        valid_components = pca.explained_variance_ratio_ >= min_variance
+        n_valid = valid_components.sum()
+
+        if n_valid < pca.n_components_:
+            print(
+                f"PCA: Filtered {pca.n_components_} → {n_valid} components "
+                f"(min variance: {min_variance:.1%})"
+            )
+            # Refit with exact number
+            pca = PCA(n_components=n_valid, whiten=whiten, random_state=seed)
+            pca.fit(X_scaled)
 
     return {
         "combat_model": combat_model,
