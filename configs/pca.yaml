@@ -4,8 +4,12 @@
 # n_components can be:
 #   - int (e.g., 50): Keep exactly N components
 #   - float (e.g., 0.95): Keep enough components to explain this % of variance
-n_components: 29  # Keep components explaining 90% variance
+# Note: Automatically capped at n_samples to ensure modes <= subjects
+n_components: 100  # Increase to capture more variance (was 100)
 whiten: false  # Whether to whiten components (scale to unit variance)
+
+# Component filtering
+min_component_variance: 0.0  # Drop components explaining <1% variance
 
 # Plotting parameters
 figure:

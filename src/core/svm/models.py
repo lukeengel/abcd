@@ -28,5 +28,6 @@ def create_svm(config: dict, seed: int) -> SVC:
         class_weight=model_cfg.get("class_weight", "balanced"),
         max_iter=model_cfg.get("max_iter", 1000000),
         tol=model_cfg.get("tol", 0.001),
+        probability=model_cfg.get("probability", False),
         random_state=seed,
     )
