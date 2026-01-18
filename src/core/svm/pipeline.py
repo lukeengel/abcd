@@ -1,20 +1,22 @@
 """SVM classification pipeline with nested CV (no fixed holdout test set)."""
 
+import logging
 import pickle
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
 from sklearn.svm import SVC
-from sklearn.linear_model import LogisticRegression
 from tqdm import tqdm
 
+from ..downsampling import get_balanced_indices
 from .evaluation import (
     aggregate_cv_predictions,
     compute_confusion_matrix,
     compute_metrics,
-    get_cv_splitter,
     find_best_threshold,
+    get_cv_splitter,
 )
 from .feature_mapping import enrich_brain_regions
 from .interpretation import (
@@ -25,10 +27,10 @@ from .models import create_baseline
 from .preprocessing import apply_pca_to_fold, fit_pca_on_dev
 from .visualization import plot_confusion_matrix, plot_feature_importance
 
+logger = logging.getLogger(__name__)
 
-def fit_platt_scaler(
-    scores: np.ndarray, targets: np.ndarray
-) -> LogisticRegression | None:
+
+def fit_platt_scaler(scores: np.ndarray, targets: np.ndarray) -> LogisticRegression | None:
     """Fit Platt scaling on out-of-fold scores; return None if not feasible."""
     if scores is None or len(scores) == 0 or len(np.unique(targets)) < 2:
         return None
@@ -38,9 +40,7 @@ def fit_platt_scaler(
     return scaler
 
 
-def apply_platt_scaler(
-    scaler: LogisticRegression | None, raw_scores: np.ndarray
-) -> np.ndarray:
+def apply_platt_scaler(scaler: LogisticRegression | None, raw_scores: np.ndarray) -> np.ndarray:
     """Apply fitted Platt scaler to raw decision scores."""
     if scaler is None:
         return raw_scores
@@ -52,12 +52,7 @@ def load_full_dataset(env) -> pd.DataFrame:
     """Load all data for nested CV (train+val+test combined)."""
     run_cfg = env.configs.run
     data_dir = (
-        env.repo_root
-        / "outputs"
-        / run_cfg["run_name"]
-        / run_cfg["run_id"]
-        / f"seed_{run_cfg['seed']}"
-        / "datasets"
+        env.repo_root / "outputs" / run_cfg["run_name"] / run_cfg["run_id"] / f"seed_{run_cfg['seed']}" / "datasets"
     )
 
     # Load all splits and combine
@@ -69,13 +64,9 @@ def load_full_dataset(env) -> pd.DataFrame:
     return full_df
 
 
-def filter_task_data(
-    df: pd.DataFrame, task_config: dict, group_col: str
-) -> tuple[pd.DataFrame, np.ndarray]:
+def filter_task_data(df: pd.DataFrame, task_config: dict, group_col: str) -> tuple[pd.DataFrame, np.ndarray]:
     """Filter data for specific classification task."""
-    pos_classes = task_config.get("positive_classes") or [
-        task_config.get("positive_class")
-    ]
+    pos_classes = task_config.get("positive_classes") or [task_config.get("positive_class")]
     neg_class = task_config["negative_class"]
 
     mask = df[group_col].isin(pos_classes + [neg_class])
@@ -148,15 +139,11 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, svm_config, seed):
         val_scores_threshold = []
         val_targets = []
 
-        for inner_fold, (inner_train_idx, inner_val_idx) in enumerate(
-            inner_cv.split(X_train, y_train), 1
-        ):
+        for inner_fold, (inner_train_idx, inner_val_idx) in enumerate(inner_cv.split(X_train, y_train), 1):
             # Build model params - only add class_weight if not in grid search params
             model_params = params.copy()
             if "class_weight" not in model_params:
-                model_params["class_weight"] = svm_config["model"].get(
-                    "class_weight", "balanced"
-                )
+                model_params["class_weight"] = svm_config["model"].get("class_weight", "balanced")
             model_params["max_iter"] = svm_config["model"].get("max_iter", -1)
             model_params["probability"] = use_probability
             model_params["random_state"] = seed + inner_fold
@@ -184,9 +171,7 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, svm_config, seed):
             roc_scores.append(roc_auc_score(y_val, scores_for_roc))
             pr_auc_scores.append(average_precision_score(y_val, scores_for_threshold))
             precision_scores.append(precision_score(y_val, y_val_pred, zero_division=0))
-            fbeta_scores.append(
-                fbeta_score(y_val, y_val_pred, beta=beta, zero_division=0)
-            )
+            fbeta_scores.append(fbeta_score(y_val, y_val_pred, beta=beta, zero_division=0))
 
             val_scores_threshold.append(scores_for_threshold)
             val_targets.append(y_val)
@@ -209,9 +194,7 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, svm_config, seed):
 
         aggregate_targets = np.concatenate(val_targets)
         aggregate_threshold_scores = np.concatenate(val_scores_threshold)
-        thresholds_for_metric = threshold_candidates or (
-            [decision_threshold] if use_probability else [0.0]
-        )
+        thresholds_for_metric = threshold_candidates or ([decision_threshold] if use_probability else [0.0])
 
         if scoring_name == "roc_auc":
             metric_score = roc_mean
@@ -225,13 +208,9 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, svm_config, seed):
             for thr in thresholds_for_metric:
                 y_pred_thr = (aggregate_threshold_scores >= thr).astype(int)
                 if scoring_name == "precision":
-                    metric_val = precision_score(
-                        aggregate_targets, y_pred_thr, zero_division=0
-                    )
+                    metric_val = precision_score(aggregate_targets, y_pred_thr, zero_division=0)
                 elif scoring_name == "fbeta":
-                    metric_val = fbeta_score(
-                        aggregate_targets, y_pred_thr, beta=beta, zero_division=0
-                    )
+                    metric_val = fbeta_score(aggregate_targets, y_pred_thr, beta=beta, zero_division=0)
                 else:
                     metric_val = balanced_accuracy_score(aggregate_targets, y_pred_thr)
                 if metric_val > best_metric:
@@ -266,9 +245,7 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, svm_config, seed):
 
     threshold_list = threshold_candidates if threshold_candidates else None
 
-    calibrator = fit_platt_scaler(
-        best_result["val_scores_threshold"], best_result["val_targets"]
-    )
+    calibrator = fit_platt_scaler(best_result["val_scores_threshold"], best_result["val_targets"])
     calibration_scores = best_result["val_scores_threshold"]
     if calibrator is not None:
         calibration_scores = apply_platt_scaler(calibrator, calibration_scores)
@@ -286,9 +263,7 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, svm_config, seed):
     else:
         best_threshold = decision_threshold if use_probability else 0.0
 
-    print(
-        f"\n    ✓ BEST (by {scoring_metric}): {best_params} → {scoring_metric}={best_metric_score:.3f}"
-    )
+    print(f"\n    ✓ BEST (by {scoring_metric}): {best_params} → {scoring_metric}={best_metric_score:.3f}")
     if threshold_candidates:
         print(
             f"    ✓ Selected threshold {best_threshold:.3f} "
@@ -299,9 +274,7 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, svm_config, seed):
     # Build final model params - only add class_weight if not in best_params
     final_params = best_params.copy()
     if "class_weight" not in final_params:
-        final_params["class_weight"] = svm_config["model"].get(
-            "class_weight", "balanced"
-        )
+        final_params["class_weight"] = svm_config["model"].get("class_weight", "balanced")
     final_params["max_iter"] = svm_config["model"].get("max_iter", -1)
     final_params["probability"] = use_probability
     final_params["random_state"] = seed
@@ -347,9 +320,12 @@ def run_single_fold(
     use_probability = svm_config["model"].get("probability", False)
     threshold_candidates = get_threshold_candidates(svm_config)
 
-    print(
-        f"  Train: {len(y_train)} (class: {np.bincount(y_train)}) | Test: {len(y_test)}"
-    )
+    # Check if downsampling is enabled
+    downsample_config = svm_config.get("downsampling", {})
+    use_downsampling = downsample_config.get("enabled", False)
+    n_iterations = downsample_config.get("n_iterations", 100)
+
+    print(f"  Train: {len(y_train)} (class: {np.bincount(y_train)}) | Test: {len(y_test)}")
 
     # Fit PCA on train set only (no data leakage)
     fitted_pipeline = fit_pca_on_dev(train_df, env, seed + fold_idx)
@@ -366,22 +342,14 @@ def run_single_fold(
     if threshold_candidates:
         baseline_val_scores = []
         baseline_val_targets = []
-        baseline_cv = StratifiedKFold(
-            n_splits=inner_cv_splits, shuffle=True, random_state=seed + fold_idx
-        )
-        for inner_idx, (inner_train_idx, inner_val_idx) in enumerate(
-            baseline_cv.split(X_train_pca, y_train), 1
-        ):
+        baseline_cv = StratifiedKFold(n_splits=inner_cv_splits, shuffle=True, random_state=seed + fold_idx)
+        for inner_idx, (inner_train_idx, inner_val_idx) in enumerate(baseline_cv.split(X_train_pca, y_train), 1):
             temp_model = create_baseline(svm_config, seed + fold_idx + inner_idx)
             temp_model.fit(X_train_pca[inner_train_idx], y_train[inner_train_idx])
-            baseline_val_scores.append(
-                temp_model.predict_proba(X_train_pca[inner_val_idx])[:, 1]
-            )
+            baseline_val_scores.append(temp_model.predict_proba(X_train_pca[inner_val_idx])[:, 1])
             baseline_val_targets.append(y_train[inner_val_idx])
 
-        threshold_metric = svm_config.get("evaluation", {}).get(
-            "threshold_metric", "balanced_accuracy"
-        )
+        threshold_metric = svm_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
         baseline_threshold, _ = find_best_threshold(
             np.concatenate(baseline_val_targets),
             np.concatenate(baseline_val_scores),
@@ -399,18 +367,176 @@ def run_single_fold(
     baseline_score = baseline_proba
     baseline_metrics = compute_metrics(y_test, baseline_pred, baseline_score)
 
+    # Downsampling with averaging
+    if use_downsampling:
+        import os
+        import sys
+
+        from sklearn.model_selection import train_test_split
+        from tqdm.auto import tqdm as tqdm_auto
+
+        print(f"\n  Downsampling: {n_iterations} iterations (1:1 balanced)")
+        imbalance = max(np.bincount(y_train)) / min(np.bincount(y_train))
+        print(f"  Imbalance: {imbalance:.1f}:1 → 1:1")
+
+        # Split training into train/val for threshold optimization
+        inner_val_ratio = svm_config.get("cv", {}).get("inner_val_ratio", 0.25)
+        X_inner_train, X_inner_val, y_inner_train, y_inner_val = train_test_split(
+            X_train_pca,
+            y_train,
+            test_size=inner_val_ratio,
+            stratify=y_train,
+            random_state=seed + fold_idx,
+        )
+
+        all_val_probas = []
+        all_test_probas = []
+        all_iter_params = []  # Track all params to see distribution
+        best_iter_roc_auc = -1
+        best_iter_params = {}
+        tuning_enabled = svm_config.get("tuning", {}).get("enabled", False)
+
+        pbar = tqdm_auto(range(n_iterations), desc="  Training")
+        for iter_idx in pbar:
+            # Downsample from inner training set only
+            balanced_idx = get_balanced_indices(y_inner_train, seed=seed + fold_idx + 1000 + iter_idx)
+            X_train_balanced = X_inner_train[balanced_idx]
+            y_train_balanced = y_inner_train[balanced_idx]
+
+            # Train model (suppress tuning output, keep stderr for tqdm)
+            if tuning_enabled:
+                old_stdout = sys.stdout
+                sys.stdout = open(os.devnull, "w")
+                try:
+                    (
+                        iter_best_params,
+                        iter_model,
+                        _,
+                        _,
+                    ) = tune_hyperparameters_with_gridsearch(
+                        X_train_balanced,
+                        y_train_balanced,
+                        svm_config,
+                        seed + fold_idx + iter_idx,
+                    )
+                finally:
+                    sys.stdout.close()
+                    sys.stdout = old_stdout
+            else:
+                model_cfg = svm_config["model"].copy()
+                iter_model = SVC(
+                    kernel=model_cfg.get("kernel", "linear"),
+                    C=model_cfg.get("C", 1.0),
+                    gamma=model_cfg.get("gamma", "scale"),
+                    class_weight=model_cfg.get("class_weight", "balanced"),
+                    max_iter=model_cfg.get("max_iter", -1),
+                    tol=model_cfg.get("tol", 0.001),
+                    probability=use_probability,
+                    random_state=seed + fold_idx + iter_idx,
+                )
+                iter_model.fit(X_train_balanced, y_train_balanced)
+                iter_best_params = model_cfg
+
+            # Predict on validation set (for threshold optimization)
+            if use_probability and hasattr(iter_model, "predict_proba"):
+                iter_val_proba = iter_model.predict_proba(X_inner_val)[:, 1]
+                iter_test_proba = iter_model.predict_proba(X_test_pca)[:, 1]
+            elif hasattr(iter_model, "decision_function"):
+                iter_val_proba = iter_model.decision_function(X_inner_val)
+                iter_test_proba = iter_model.decision_function(X_test_pca)
+            else:
+                raise AttributeError("Model lacks predict_proba and decision_function")
+
+            all_val_probas.append(iter_val_proba)
+            all_test_probas.append(iter_test_proba)
+
+            # Compute validation metrics for monitoring
+            from sklearn.metrics import (
+                roc_auc_score,
+                balanced_accuracy_score,
+                precision_score,
+                average_precision_score,
+            )
+
+            iter_val_pred = (iter_val_proba >= 0.5).astype(int)
+            iter_bal_acc = balanced_accuracy_score(y_inner_val, iter_val_pred)
+            iter_ppv = precision_score(y_inner_val, iter_val_pred, zero_division=0)
+            iter_roc_auc = roc_auc_score(y_inner_val, iter_val_proba)
+            iter_pr_auc = average_precision_score(y_inner_val, iter_val_proba)
+
+            # Track all params and best performing iteration
+            all_iter_params.append(iter_best_params)
+            if iter_roc_auc > best_iter_roc_auc:
+                best_iter_roc_auc = iter_roc_auc
+                best_iter_params = iter_best_params
+
+            pbar.set_postfix(
+                {
+                    "bal_acc": f"{iter_bal_acc:.3f}",
+                    "ppv": f"{iter_ppv:.3f}",
+                    "roc_auc": f"{iter_roc_auc:.3f}",
+                    "pr_auc": f"{iter_pr_auc:.3f}",
+                }
+            )
+
+        pbar.close()
+
+        # Average predictions
+        svm_val_score = np.mean(all_val_probas, axis=0)
+        svm_raw_score = np.mean(all_test_probas, axis=0)
+        svm_model = iter_model  # Keep last model for reference
+
+        # Use params from best performing iteration
+        best_params = best_iter_params
+
+        # Print hyperparameter distribution
+        if tuning_enabled and len(all_iter_params) > 0:
+            from collections import Counter
+
+            print(f"\n  Hyperparameter distribution across {n_iterations} iterations:")
+
+            # Count each unique parameter combination
+            for param_name in ["kernel", "C", "gamma"]:
+                if param_name in all_iter_params[0]:
+                    values = [p.get(param_name) for p in all_iter_params if param_name in p]
+                    if values:
+                        counts = Counter(values)
+                        total = len(values)
+                        print(f"    {param_name}:")
+                        for value, count in counts.most_common():
+                            pct = 100 * count / total
+                            print(f"      {value}: {count}/{total} ({pct:.1f}%)")
+
+        svm_calibrator = None
+
+        # Optimize threshold on VALIDATION SET (not test set!)
+        if threshold_candidates:
+            threshold_metric = svm_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
+            svm_threshold, best_val_score = find_best_threshold(
+                y_inner_val,
+                svm_val_score,
+                threshold_candidates,
+                default_threshold=0.5,
+                metric=threshold_metric,
+                beta=float(svm_config.get("tuning", {}).get("fbeta_beta", 0.5)),
+            )
+            print(
+                f"  ✓ Averaged {n_iterations} models | Threshold (val {threshold_metric}={best_val_score:.3f}): {svm_threshold:.3f}"
+            )
+        else:
+            svm_threshold = 0.5
+            print(f"  ✓ Averaged {n_iterations} models")
+
     # Hyperparameter tuning with GridSearchCV (if enabled)
-    best_params = {}
-    svm_calibrator = None
-    if svm_config.get("tuning", {}).get("enabled", False):
+    elif svm_config.get("tuning", {}).get("enabled", False):
+        best_params = {}
+        svm_calibrator = None
         (
             best_params,
             svm_model,
             svm_calibrator,
             svm_threshold,
-        ) = tune_hyperparameters_with_gridsearch(
-            X_train_pca, y_train, svm_config, seed + fold_idx
-        )
+        ) = tune_hyperparameters_with_gridsearch(X_train_pca, y_train, svm_config, seed + fold_idx)
     else:
         # Use default hyperparameters from config
         model_cfg = svm_config["model"].copy()
@@ -425,22 +551,14 @@ def run_single_fold(
             random_state=seed + fold_idx,
         )
         svm_model.fit(X_train_pca, y_train)
-        svm_threshold = (
-            svm_config.get("evaluation", {}).get("decision_threshold", 0.5)
-            if use_probability
-            else 0.0
-        )
+        svm_threshold = svm_config.get("evaluation", {}).get("decision_threshold", 0.5) if use_probability else 0.0
 
         # Build Platt scaler from fallback CV
         cv_folds = svm_config.get("tuning", {}).get("cv_folds", 3)
-        fallback_cv = StratifiedKFold(
-            n_splits=cv_folds, shuffle=True, random_state=seed + fold_idx
-        )
+        fallback_cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=seed + fold_idx)
         oof_scores = []
         oof_targets = []
-        for inner_idx, (tr_idx, va_idx) in enumerate(
-            fallback_cv.split(X_train_pca, y_train), 1
-        ):
+        for inner_idx, (tr_idx, va_idx) in enumerate(fallback_cv.split(X_train_pca, y_train), 1):
             temp_model = SVC(
                 kernel=model_cfg.get("kernel", "linear"),
                 C=model_cfg.get("C", 1.0),
@@ -464,9 +582,7 @@ def run_single_fold(
             svm_calibrator = fit_platt_scaler(oof_scores_concat, oof_targets_concat)
             if svm_calibrator is not None and threshold_candidates:
                 calibrated_oof = apply_platt_scaler(svm_calibrator, oof_scores_concat)
-                threshold_metric = svm_config.get("evaluation", {}).get(
-                    "threshold_metric", "balanced_accuracy"
-                )
+                threshold_metric = svm_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
                 svm_threshold, _ = find_best_threshold(
                     oof_targets_concat,
                     calibrated_oof,
@@ -481,13 +597,14 @@ def run_single_fold(
         f"\n  Evaluating on test set ({len(y_test)} subjects: {np.bincount(y_test)[1]} clinical, {np.bincount(y_test)[0]} control)..."
     )
 
-    # SVM predictions using Platt-calibrated scores
-    if use_probability and hasattr(svm_model, "predict_proba"):
-        svm_raw_score = svm_model.predict_proba(X_test_pca)[:, 1]
-    elif hasattr(svm_model, "decision_function"):
-        svm_raw_score = svm_model.decision_function(X_test_pca)
-    else:
-        raise AttributeError("SVM model lacks predict_proba and decision_function")
+    # SVM predictions using Platt-calibrated scores (or already computed for downsampling)
+    if not use_downsampling:
+        if use_probability and hasattr(svm_model, "predict_proba"):
+            svm_raw_score = svm_model.predict_proba(X_test_pca)[:, 1]
+        elif hasattr(svm_model, "decision_function"):
+            svm_raw_score = svm_model.decision_function(X_test_pca)
+        else:
+            raise AttributeError("SVM model lacks predict_proba and decision_function")
 
     svm_score = apply_platt_scaler(svm_calibrator, svm_raw_score)
     svm_pred = (svm_score >= svm_threshold).astype(int)
@@ -495,12 +612,33 @@ def run_single_fold(
     svm_metrics = compute_metrics(y_test, svm_pred, svm_score)
 
     # Print test set performance
+    from sklearn.metrics import precision_score, average_precision_score
+
+    baseline_ppv = precision_score(y_test, baseline_pred, zero_division=0)
+    baseline_pr_auc = average_precision_score(y_test, baseline_score)
+    svm_ppv = precision_score(y_test, svm_pred, zero_division=0)
+    svm_pr_auc = average_precision_score(y_test, svm_score)
+
+    # Format hyperparameters for display
+    def format_params(params):
+        if "downsampling" in params:
+            return f"downsampling={params['downsampling']}"
+        parts = []
+        if "kernel" in params:
+            parts.append(f"kernel={params['kernel']}")
+        if "C" in params:
+            parts.append(f"C={params['C']}")
+        if "gamma" in params:
+            parts.append(f"gamma={params['gamma']}")
+        return ", ".join(parts) if parts else "default"
+
     print("\n  ✓ Test Set Results:")
+    print(f"    Hyperparams: {format_params(best_params)}")
     print(
-        f"    Baseline (threshold={baseline_threshold:.3f}): bal_acc={baseline_metrics['balanced_accuracy']:.3f}  roc_auc={baseline_metrics.get('roc_auc', 0):.3f}  ({baseline_pred.sum()}/{len(baseline_pred)} predicted positive)"
+        f"    Baseline (thr={baseline_threshold:.3f}): bal_acc={baseline_metrics['balanced_accuracy']:.3f}  ppv={baseline_ppv:.3f}  roc_auc={baseline_metrics.get('roc_auc', 0):.3f}  pr_auc={baseline_pr_auc:.3f}  ({baseline_pred.sum()}/{len(baseline_pred)} pred+)"
     )
     print(
-        f"    SVM (threshold={svm_threshold_display:.3f}):       bal_acc={svm_metrics['balanced_accuracy']:.3f}  roc_auc={svm_metrics.get('roc_auc', 0):.3f}  ({svm_pred.sum()}/{len(svm_pred)} predicted positive)"
+        f"    SVM (thr={svm_threshold_display:.3f}):      bal_acc={svm_metrics['balanced_accuracy']:.3f}  ppv={svm_ppv:.3f}  roc_auc={svm_metrics.get('roc_auc', 0):.3f}  pr_auc={svm_pr_auc:.3f}  ({svm_pred.sum()}/{len(svm_pred)} pred+)"
     )
 
     return {
@@ -569,9 +707,7 @@ def run_task_with_nested_cv(
         y_test = y[test_idx]
 
         # Run this fold (GridSearchCV will handle inner CV for tuning)
-        fold_result = run_single_fold(
-            env, train_df, test_df, y_train, y_test, fold_idx, seed
-        )
+        fold_result = run_single_fold(env, train_df, test_df, y_train, y_test, fold_idx, seed)
 
         baseline_folds.append(fold_result["baseline"])
         svm_folds.append(fold_result["svm"])
@@ -587,16 +723,12 @@ def run_task_with_nested_cv(
     if threshold_candidates:
         all_targets = np.concatenate([fold["y_test"] for fold in svm_folds])
         all_scores = np.concatenate([fold["y_score"] for fold in svm_folds])
-        threshold_metric = svm_config.get("evaluation", {}).get(
-            "threshold_metric", "balanced_accuracy"
-        )
+        threshold_metric = svm_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
         global_threshold, global_threshold_metric = find_best_threshold(
             all_targets,
             all_scores,
             threshold_candidates,
-            default_threshold=svm_config.get("evaluation", {}).get(
-                "decision_threshold", 0.0
-            ),
+            default_threshold=svm_config.get("evaluation", {}).get("decision_threshold", 0.0),
             metric=threshold_metric,
             beta=float(svm_config.get("tuning", {}).get("fbeta_beta", 0.5)),
         )
@@ -604,13 +736,7 @@ def run_task_with_nested_cv(
         svm_agg["global_threshold_metric"] = global_threshold_metric
 
     # Setup output directory
-    data_dir = (
-        env.repo_root
-        / "outputs"
-        / env.configs.run["run_name"]
-        / env.configs.run["run_id"]
-        / f"seed_{seed}"
-    )
+    data_dir = env.repo_root / "outputs" / env.configs.run["run_name"] / env.configs.run["run_id"] / f"seed_{seed}"
     svm_dir = data_dir / "svm" / task_name
     svm_dir.mkdir(parents=True, exist_ok=True)
     plots_dir = svm_dir / "plots"
@@ -621,9 +747,7 @@ def run_task_with_nested_cv(
     print(f"RESULTS: {task_name}")
     print(f"{'='*60}")
     print("Baseline (Logistic Regression):")
-    print(
-        f"  Overall Balanced Accuracy: {baseline_agg['overall']['balanced_accuracy']:.3f}"
-    )
+    print(f"  Overall Balanced Accuracy: {baseline_agg['overall']['balanced_accuracy']:.3f}")
     print(f"  Overall ROC-AUC: {baseline_agg['overall'].get('roc_auc', 0):.3f}")
     print("\nSVM:")
     print(f"  Overall Balanced Accuracy: {svm_agg['overall']['balanced_accuracy']:.3f}")
@@ -632,16 +756,10 @@ def run_task_with_nested_cv(
     print(
         f"  Balanced Accuracy: {svm_agg['per_fold']['balanced_accuracy_mean']:.3f} ± {svm_agg['per_fold']['balanced_accuracy_std']:.3f}"
     )
-    print(
-        f"  ROC-AUC: {svm_agg['per_fold']['roc_auc_mean']:.3f} ± {svm_agg['per_fold']['roc_auc_std']:.3f}"
-    )
+    print(f"  ROC-AUC: {svm_agg['per_fold']['roc_auc_mean']:.3f} ± {svm_agg['per_fold']['roc_auc_std']:.3f}")
     if global_threshold is not None:
-        threshold_metric_name = svm_config.get("evaluation", {}).get(
-            "threshold_metric", "balanced_accuracy"
-        )
-        print(
-            f"  Global threshold ({threshold_metric_name}): {global_threshold:.3f} → {global_threshold_metric:.3f}"
-        )
+        threshold_metric_name = svm_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
+        print(f"  Global threshold ({threshold_metric_name}): {global_threshold:.3f} → {global_threshold_metric:.3f}")
     print(f"{'='*60}\n")
 
     if not sweep_mode:
@@ -686,16 +804,10 @@ def run_task_with_nested_cv(
         # Log overall metrics
         wandb.log(
             {
-                f"{task_name}/overall_balanced_accuracy": svm_agg["overall"][
-                    "balanced_accuracy"
-                ],
+                f"{task_name}/overall_balanced_accuracy": svm_agg["overall"]["balanced_accuracy"],
                 f"{task_name}/overall_roc_auc": svm_agg["overall"].get("roc_auc", 0),
-                f"{task_name}/per_fold_balanced_accuracy_mean": svm_agg["per_fold"][
-                    "balanced_accuracy_mean"
-                ],
-                f"{task_name}/per_fold_balanced_accuracy_std": svm_agg["per_fold"][
-                    "balanced_accuracy_std"
-                ],
+                f"{task_name}/per_fold_balanced_accuracy_mean": svm_agg["per_fold"]["balanced_accuracy_mean"],
+                f"{task_name}/per_fold_balanced_accuracy_std": svm_agg["per_fold"]["balanced_accuracy_std"],
             }
         )
 
@@ -727,13 +839,7 @@ def compute_feature_importance(env, full_df, task_config, svm_folds, seed):
     df_filtered, _ = filter_task_data(full_df, task_config, group_col)
 
     # Setup output directory
-    data_dir = (
-        env.repo_root
-        / "outputs"
-        / env.configs.run["run_name"]
-        / env.configs.run["run_id"]
-        / f"seed_{seed}"
-    )
+    data_dir = env.repo_root / "outputs" / env.configs.run["run_name"] / env.configs.run["run_id"] / f"seed_{seed}"
     svm_dir = data_dir / "svm" / task_name
     plots_dir = svm_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
@@ -751,9 +857,7 @@ def compute_feature_importance(env, full_df, task_config, svm_folds, seed):
     print(f"\nComputing feature importance for {task_name}...")
 
     # Permutation importance
-    svm_importance = get_feature_importance_permutation(
-        model, X_test_pca, y_test, pca_features, seed
-    )
+    svm_importance = get_feature_importance_permutation(model, X_test_pca, y_test, pca_features, seed)
 
     plot_feature_importance(
         svm_importance,
@@ -808,9 +912,7 @@ def run_svm_pipeline(env, use_wandb: bool = False, sweep_mode: bool = False):
     all_results = {}
 
     for task_config in tasks:
-        task_results = run_task_with_nested_cv(
-            env, full_df, task_config, use_wandb, sweep_mode
-        )
+        task_results = run_task_with_nested_cv(env, full_df, task_config, use_wandb, sweep_mode)
         all_results[task_config["name"]] = task_results
 
     print("\n" + "=" * 60)

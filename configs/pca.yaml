@@ -4,12 +4,12 @@
 # n_components can be:
 #   - int (e.g., 50): Keep exactly N components
 #   - float (e.g., 0.95): Keep enough components to explain this % of variance
-# Note: Automatically capped at n_samples to ensure modes <= subjects
-n_components: 100  # Increase to capture more variance (was 100)
-whiten: false  # Whether to whiten components (scale to unit variance)
+# Automatically capped at n_samples to ensure modes <= subjects
+n_components: 10
+whiten: false
 
 # Component filtering
-min_component_variance: 0.0  # Drop components explaining <1% variance
+min_component_variance: 0.0  # Drop components explaining % variance
 
 # Plotting parameters
 figure:
@@ -23,7 +23,7 @@ figure:
   figure_titlesize: 16
 
 # How many top components to visualize
-plot_top_n: 5  # Plot first 5 principal components
+plot_top_n: 5
 
 # Color schemes (reuse from tsne.yaml)
 colors:

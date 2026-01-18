@@ -23,27 +23,8 @@ def tune_hyperparameters(
     model_type: str = "rf",
     n_jobs: int = 1,
 ) -> Tuple[Dict[str, Any], List[Dict]]:
-    """
-    Tune hyperparameters using cross-validation.
-
-    Args:
-        X_dev: Development set features (PCA-transformed)
-        y_dev: Development set labels
-        base_model: Base model instance (will be cloned with new params)
-        param_grid: Dictionary of hyperparameter lists to search
-        seed: Random seed
-        n_folds: Number of CV folds for tuning
-        use_random_sampling: Whether to use 1:1 balanced sampling
-        n_iterations: Number of sampling iterations if use_random_sampling=True
-        scoring: Metric to optimize ('roc_auc' or 'balanced_accuracy')
-        model_type: 'rf' for Random Forest or 'svm' for SVM
-        n_jobs: Number of parallel jobs (-1 for all cores)
-
-    Returns:
-        best_params: Best hyperparameters found
-        tuning_results: List of results for each parameter combination
-    """
-    # Generate all parameter combinations
+    """Tune hyperparameters using cross-validation."""
+    # generate all parameter combinations from grid
     param_names = list(param_grid.keys())
     param_values = list(param_grid.values())
     param_combinations = list(product(*param_values))
@@ -57,9 +38,7 @@ def tune_hyperparameters(
     print(f"\nTotal combinations to test: {len(param_combinations)}")
     print(f"CV folds: {n_folds}")
     print(f"Parallel jobs: {n_jobs if n_jobs != -1 else 'all CPUs'}")
-    print(
-        f"Random sampling: {use_random_sampling} (iterations: {n_iterations if use_random_sampling else 1})"
-    )
+    print(f"Random sampling: {use_random_sampling} (iterations: {n_iterations if use_random_sampling else 1})")
     print(f"Optimization metric: {scoring}")
     print(f"{'='*70}\n")
 
@@ -121,9 +100,7 @@ def tune_hyperparameters(
     print("TUNING RESULTS (Top 5):")
     print(f"{'='*70}")
     for i, result in enumerate(tuning_results[:5], 1):
-        print(
-            f"\n{i}. {scoring}: {result['mean_score']:.4f} ± {result['std_score']:.4f}"
-        )
+        print(f"\n{i}. {scoring}: {result['mean_score']:.4f} ± {result['std_score']:.4f}")
         print("   Parameters:")
         for k, v in result["params"].items():
             print(f"     {k}: {v}")

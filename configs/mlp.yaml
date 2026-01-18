@@ -1,66 +1,53 @@
+use_pca: false
 tuning:
-  enabled: true
+  enabled: false
   cv_folds: 3
   scoring: roc_auc
-  fbeta_beta: 0.6
+  fbeta_beta: 1.0
   n_jobs: 1
   param_grid:
-    kernel:
-    - linear
-    - rbf
-    C:
+    hidden_layer_sizes:
+    - [256, 128]
+    - [256, 128, 64]
+    - [512, 256]
+    alpha:
+    - 0.00001
+    - 0.0001
     - 0.001
-    - 0.005
-    - 0.01
-    #- 0.05
-    #- 0.1
-    gamma:
-    - scale
-    class_weight:
-    - null
-    #- balanced
-    #- 0: 1.0
-    #  1: 1.0 # No class_weight needed with downsampling
+    activation:
+    - tanh
+    learning_rate:
+    - adaptive
+    batch_size:
+    - 32
+    - 64
+
 cv:
   n_outer_splits: 5
   inner_val_ratio: 0.25
   shuffle: true
 baseline:
-  class_weight: balanced  # Don't use class_weight - LR already handles imbalance well
+  class_weight: null
   max_iter: 2000
   solver: lbfgs
   penalty: l2
-  C: 0.1  # Stronger regularization for imbalanced data
+  C: 0.1
 model:
-  kernel: rbf
-  C: 0.005
-  gamma: scale
-  class_weight: null  # No class_weight needed with downsampling
-  probability: false
-  max_iter: -1
-  tol: 0.001
-sweep:
-  enabled: false
-  param_grid:
-  - kernel:
-    - linear
-    C:
-    - 0.01
-    - 0.1
-    - 1.0
-    - 10.0
-  - kernel:
-    - rbf
-    C:
-    - 0.01
-    - 0.1
-    - 1.0
-    - 10.0
-    gamma:
-    - scale
-    - auto
-    - 0.01
-    - 0.1
+  hidden_layer_sizes: [256, 128, 64]
+  activation: tanh
+  alpha: 0.0001
+  learning_rate: adaptive
+  solver: adam
+  max_iter: 5000
+  early_stopping: false
+  validation_fraction: 0.1
+  n_iter_no_change: 10
+  random_state: null
+  learning_rate_init: 0.001
+  tol: 0.0001
+  batch_size: 32
+  beta_1: 0.9
+  beta_2: 0.999
 tasks:
 - name: any_vs_control
   positive_classes:
@@ -83,14 +70,12 @@ evaluation:
   bootstrap:
     enabled: true
     iterations: 1000
-  decision_threshold: 0.5  # Default, will be optimized
-  threshold_metric: balanced_accuracy  # Good for imbalanced validation set
+  decision_threshold: 0.5
+  threshold_metric: balanced_accuracy
   threshold_search:
     enabled: true
     thresholds:
-    - 0.01
     - 0.02
-    - 0.03
     - 0.05
     - 0.08
     - 0.10
@@ -102,10 +87,12 @@ evaluation:
     - 0.50
     - 0.60
     - 0.70
+    - 0.75
+    - 0.80
+    - 0.85
+    - 0.90
 interpretation:
-  top_n_pcs: 10
   top_n_features: 20
-  n_repeats: 3
 imaging_prefixes:
 - dmri
 - smri_area_cdk
