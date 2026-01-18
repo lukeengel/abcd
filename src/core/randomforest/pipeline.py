@@ -1,13 +1,17 @@
 """Random Forest classification pipeline with nested CV (no fixed holdout test set)."""
 
+import logging
 import pickle
 
 import numpy as np
 import pandas as pd
+from neuroHarmonize import harmonizationApply, harmonizationLearn
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import StratifiedKFold
+from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 
-# Reuse functions from SVM module
+from ..downsampling import get_balanced_indices
 from ..svm.evaluation import (
     aggregate_cv_predictions,
     compute_confusion_matrix,
@@ -16,20 +20,14 @@ from ..svm.evaluation import (
     get_cv_splitter,
 )
 from ..svm.pipeline import filter_task_data, load_full_dataset
-from ..svm.preprocessing import (
-    apply_pca_to_fold,
-    fit_pca_on_dev,
-)
+from ..svm.preprocessing import apply_pca_to_fold, fit_pca_on_dev
 from ..svm.visualization import plot_confusion_matrix
 from .models import create_baseline
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
-from neuroHarmonize import harmonizationLearn, harmonizationApply
+
+logger = logging.getLogger(__name__)
 
 
-def fit_platt_scaler(
-    scores: np.ndarray, targets: np.ndarray
-) -> LogisticRegression | None:
+def fit_platt_scaler(scores: np.ndarray, targets: np.ndarray) -> LogisticRegression | None:
     """Fit Platt scaling on out-of-fold scores; return None if calibration is not feasible."""
     if scores is None or len(scores) == 0 or len(np.unique(targets)) < 2:
         return None
@@ -39,9 +37,7 @@ def fit_platt_scaler(
     return scaler
 
 
-def apply_platt_scaler(
-    scaler: LogisticRegression | None, raw_scores: np.ndarray
-) -> np.ndarray:
+def apply_platt_scaler(scaler: LogisticRegression | None, raw_scores: np.ndarray) -> np.ndarray:
     """Apply fitted Platt scaler to raw probability scores."""
     if scaler is None:
         return raw_scores
@@ -49,9 +45,7 @@ def apply_platt_scaler(
     return calibrated
 
 
-def extract_rf_harmonization_data(
-    df: pd.DataFrame, env
-) -> tuple[np.ndarray, pd.DataFrame]:
+def extract_rf_harmonization_data(df: pd.DataFrame, env) -> tuple[np.ndarray, pd.DataFrame]:
     """Extract imaging features and covariates for RF harmonization."""
     from ..tsne.embeddings import get_imaging_columns
 
@@ -83,9 +77,7 @@ def fit_raw_features_on_dev(dev_df: pd.DataFrame, env, seed: int) -> dict:
     # Harmonization
     eb = harm_config.get("empirical_bayes", True)
     smooth_terms = harm_config.get("smooth_terms", [])
-    combat_model, X_harm = harmonizationLearn(
-        X, covars, eb=eb, smooth_terms=smooth_terms
-    )
+    combat_model, X_harm = harmonizationLearn(X, covars, eb=eb, smooth_terms=smooth_terms)
 
     # Scaling
     scaler = StandardScaler()
@@ -99,9 +91,7 @@ def fit_raw_features_on_dev(dev_df: pd.DataFrame, env, seed: int) -> dict:
     }
 
 
-def apply_raw_features_to_fold(
-    fold_df: pd.DataFrame, fitted_pipeline: dict, env
-) -> np.ndarray:
+def apply_raw_features_to_fold(fold_df: pd.DataFrame, fitted_pipeline: dict, env) -> np.ndarray:
     """Apply harmonization + scaling to fold (NO PCA for RF)."""
     # Extract imaging features and covariates
     X_fold, fold_covars = extract_rf_harmonization_data(fold_df, env)
@@ -159,12 +149,12 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, rf_config, seed):
     param_combinations = list(ParameterGrid(param_grid))
     inner_cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=seed)
 
-    print(f"    Tuning with nested CV ({cv_folds} inner folds)...")
-    print(f"    Scoring metric: {scoring_metric}")
+    logger.info(f"    Tuning with nested CV ({cv_folds} inner folds)...")
+    logger.info(f"    Scoring metric: {scoring_metric}")
     if threshold_candidates:
-        print(f"    Threshold search grid: {threshold_candidates}")
-    print(f"    Testing {len(param_combinations)} parameter combinations")
-    print(
+        logger.info(f"    Threshold search grid: {threshold_candidates}")
+    logger.info(f"    Testing {len(param_combinations)} parameter combinations")
+    logger.info(
         f"    Progress: Training {len(param_combinations)} × {cv_folds} = "
         f"{len(param_combinations) * cv_folds} models...\n"
     )
@@ -183,9 +173,7 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, rf_config, seed):
         val_scores = []
         val_targets = []
 
-        for inner_fold, (inner_train_idx, inner_val_idx) in enumerate(
-            inner_cv.split(X_train, y_train), 1
-        ):
+        for inner_fold, (inner_train_idx, inner_val_idx) in enumerate(inner_cv.split(X_train, y_train), 1):
             full_params = {
                 "class_weight": model_cfg.get("class_weight", "balanced_subsample"),
                 "bootstrap": model_cfg.get("bootstrap", True),
@@ -209,9 +197,7 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, rf_config, seed):
             roc_scores.append(roc_auc_score(y_val, val_proba))
             pr_auc_scores.append(average_precision_score(y_val, val_proba))
             precision_scores.append(precision_score(y_val, val_pred, zero_division=0))
-            fbeta_scores.append(
-                fbeta_score(y_val, val_pred, beta=beta, zero_division=0)
-            )
+            fbeta_scores.append(fbeta_score(y_val, val_pred, beta=beta, zero_division=0))
 
             val_scores.append(val_proba)
             val_targets.append(y_val)
@@ -248,13 +234,9 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, rf_config, seed):
             for thr in thresholds_for_metric:
                 y_pred_thr = (aggregate_scores >= thr).astype(int)
                 if scoring_name == "precision":
-                    metric_val = precision_score(
-                        aggregate_targets, y_pred_thr, zero_division=0
-                    )
+                    metric_val = precision_score(aggregate_targets, y_pred_thr, zero_division=0)
                 elif scoring_name == "fbeta":
-                    metric_val = fbeta_score(
-                        aggregate_targets, y_pred_thr, beta=beta, zero_division=0
-                    )
+                    metric_val = fbeta_score(aggregate_targets, y_pred_thr, beta=beta, zero_division=0)
                 else:
                     metric_val = balanced_accuracy_score(aggregate_targets, y_pred_thr)
                 if metric_val > best_metric:
@@ -306,16 +288,14 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, rf_config, seed):
     else:
         best_threshold = decision_threshold
 
-    print(
-        f"\n    ✓ BEST (by {scoring_metric}): {best_params} → {scoring_metric}={best_metric_score:.3f}"
-    )
+    logger.info(f"\n    ✓ BEST (by {scoring_metric}): {best_params} → {scoring_metric}={best_metric_score:.3f}")
     if threshold_candidates:
-        print(
+        logger.info(
             f"    ✓ Selected threshold {best_threshold:.3f} "
             f"(validation {metric_for_threshold}={calibrated_threshold_metric:.3f})"
         )
 
-    print("    Training final model with best params on full training data...")
+    logger.info("    Training final model with best params on full training data...")
     full_params = {
         "class_weight": model_cfg.get("class_weight", "balanced_subsample"),
         "bootstrap": model_cfg.get("bootstrap", True),
@@ -331,7 +311,7 @@ def tune_hyperparameters_with_gridsearch(X_train, y_train, rf_config, seed):
     best_model = RandomForestClassifier(**full_params)
     best_model.fit(X_train, y_train)
 
-    print("    ✓ Final model trained (Platt scaling from inner folds)")
+    logger.info("    ✓ Final model trained (Platt scaling from inner folds)")
 
     return best_params, best_model, calibrator, best_threshold
 
@@ -357,9 +337,12 @@ def run_single_fold(
     use_pca = rf_config.get("use_pca", False)
     threshold_candidates = get_threshold_candidates(rf_config)
 
-    print(
-        f"  Train: {len(y_train)} (class: {np.bincount(y_train)}) | Test: {len(y_test)}"
-    )
+    # Check if downsampling is enabled
+    downsample_config = rf_config.get("downsampling", {})
+    use_downsampling = downsample_config.get("enabled", False)
+    n_iterations = downsample_config.get("n_iterations", 100)
+
+    logger.info(f"  Train: {len(y_train)} (class: {np.bincount(y_train)}) | Test: {len(y_test)}")
 
     # Feature extraction: PCA or raw features
     if use_pca:
@@ -373,9 +356,7 @@ def run_single_fold(
         fitted_pipeline = fit_raw_features_on_dev(train_df, env, seed + fold_idx)
         X_train = apply_raw_features_to_fold(train_df, fitted_pipeline, env)
         X_test = apply_raw_features_to_fold(test_df, fitted_pipeline, env)
-        print(
-            f"  Using raw features: {X_train.shape[1]} features (harmonized + scaled)"
-        )
+        print(f"  Using raw features: {X_train.shape[1]} features (harmonized + scaled)")
 
     # Train baseline with threshold optimization
     decision_threshold = rf_config.get("evaluation", {}).get("decision_threshold", 0.5)
@@ -385,22 +366,14 @@ def run_single_fold(
     if threshold_candidates:
         baseline_val_scores = []
         baseline_val_targets = []
-        baseline_cv = StratifiedKFold(
-            n_splits=inner_cv_splits, shuffle=True, random_state=seed + fold_idx
-        )
-        for inner_idx, (inner_train_idx, inner_val_idx) in enumerate(
-            baseline_cv.split(X_train, y_train), 1
-        ):
+        baseline_cv = StratifiedKFold(n_splits=inner_cv_splits, shuffle=True, random_state=seed + fold_idx)
+        for inner_idx, (inner_train_idx, inner_val_idx) in enumerate(baseline_cv.split(X_train, y_train), 1):
             temp_model = create_baseline(rf_config, seed + fold_idx + inner_idx)
             temp_model.fit(X_train[inner_train_idx], y_train[inner_train_idx])
-            baseline_val_scores.append(
-                temp_model.predict_proba(X_train[inner_val_idx])[:, 1]
-            )
+            baseline_val_scores.append(temp_model.predict_proba(X_train[inner_val_idx])[:, 1])
             baseline_val_targets.append(y_train[inner_val_idx])
 
-        threshold_metric = rf_config.get("evaluation", {}).get(
-            "threshold_metric", "balanced_accuracy"
-        )
+        threshold_metric = rf_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
         baseline_threshold, _ = find_best_threshold(
             np.concatenate(baseline_val_targets),
             np.concatenate(baseline_val_scores),
@@ -417,18 +390,180 @@ def run_single_fold(
     baseline_score = baseline_proba
     baseline_metrics = compute_metrics(y_test, baseline_pred, baseline_score)
 
+    # Downsampling with averaging
+    if use_downsampling:
+        import sys
+        import os
+        from tqdm.auto import tqdm as tqdm_auto
+        from sklearn.model_selection import train_test_split
+
+        print(f"\n  Downsampling: {n_iterations} iterations (1:1 balanced)")
+        imbalance = max(np.bincount(y_train)) / min(np.bincount(y_train))
+        print(f"  Imbalance: {imbalance:.1f}:1 → 1:1")
+
+        # Split training into train/val for threshold optimization
+        inner_val_ratio = rf_config.get("cv", {}).get("inner_val_ratio", 0.25)
+        X_inner_train, X_inner_val, y_inner_train, y_inner_val = train_test_split(
+            X_train,
+            y_train,
+            test_size=inner_val_ratio,
+            stratify=y_train,
+            random_state=seed + fold_idx,
+        )
+
+        all_val_probas = []
+        all_test_probas = []
+        all_iter_params = []  # Track all params to see distribution
+        best_iter_roc_auc = -1
+        best_iter_params = {}
+        tuning_enabled = rf_config.get("tuning", {}).get("enabled", False)
+
+        pbar = tqdm_auto(range(n_iterations), desc="  Training")
+        for iter_idx in pbar:
+            # Downsample from inner training set only
+            balanced_idx = get_balanced_indices(y_inner_train, seed=seed + fold_idx + 1000 + iter_idx)
+            X_train_balanced = X_inner_train[balanced_idx]
+            y_train_balanced = y_inner_train[balanced_idx]
+
+            # Train model (suppress tuning output, keep stderr for tqdm)
+            if tuning_enabled:
+                old_stdout = sys.stdout
+                sys.stdout = open(os.devnull, "w")
+                try:
+                    (
+                        iter_best_params,
+                        iter_model,
+                        _,
+                        _,
+                    ) = tune_hyperparameters_with_gridsearch(
+                        X_train_balanced,
+                        y_train_balanced,
+                        rf_config,
+                        seed + fold_idx + iter_idx,
+                    )
+                finally:
+                    sys.stdout.close()
+                    sys.stdout = old_stdout
+            else:
+                from sklearn.ensemble import RandomForestClassifier
+
+                model_cfg = rf_config["model"].copy()
+                iter_model = RandomForestClassifier(
+                    n_estimators=model_cfg.get("n_estimators", 100),
+                    max_depth=model_cfg.get("max_depth", None),
+                    min_samples_split=model_cfg.get("min_samples_split", 2),
+                    min_samples_leaf=model_cfg.get("min_samples_leaf", 1),
+                    max_features=model_cfg.get("max_features", "sqrt"),
+                    class_weight=model_cfg.get("class_weight", "balanced_subsample"),
+                    bootstrap=model_cfg.get("bootstrap", True),
+                    oob_score=model_cfg.get("oob_score", False),
+                    n_jobs=model_cfg.get("n_jobs", -1),
+                    random_state=seed + fold_idx + iter_idx,
+                    verbose=0,
+                )
+                iter_model.fit(X_train_balanced, y_train_balanced)
+                iter_best_params = model_cfg
+
+            # Predict on validation and test sets
+            iter_val_proba = iter_model.predict_proba(X_inner_val)[:, 1]
+            iter_test_proba = iter_model.predict_proba(X_test)[:, 1]
+
+            all_val_probas.append(iter_val_proba)
+            all_test_probas.append(iter_test_proba)
+
+            # Compute validation metrics for monitoring
+            from sklearn.metrics import (
+                roc_auc_score,
+                balanced_accuracy_score,
+                precision_score,
+                average_precision_score,
+            )
+
+            iter_val_pred = (iter_val_proba >= 0.5).astype(int)
+            iter_bal_acc = balanced_accuracy_score(y_inner_val, iter_val_pred)
+            iter_ppv = precision_score(y_inner_val, iter_val_pred, zero_division=0)
+            iter_roc_auc = roc_auc_score(y_inner_val, iter_val_proba)
+            iter_pr_auc = average_precision_score(y_inner_val, iter_val_proba)
+
+            # Track all params and best performing iteration
+            all_iter_params.append(iter_best_params)
+            if iter_roc_auc > best_iter_roc_auc:
+                best_iter_roc_auc = iter_roc_auc
+                best_iter_params = iter_best_params
+
+            pbar.set_postfix(
+                {
+                    "bal_acc": f"{iter_bal_acc:.3f}",
+                    "ppv": f"{iter_ppv:.3f}",
+                    "roc_auc": f"{iter_roc_auc:.3f}",
+                    "pr_auc": f"{iter_pr_auc:.3f}",
+                }
+            )
+
+        pbar.close()
+
+        # Average predictions
+        rf_val_proba = np.mean(all_val_probas, axis=0)
+        rf_raw_proba = np.mean(all_test_probas, axis=0)
+        rf_model = iter_model  # Keep last model for reference
+
+        # Use params from best performing iteration
+        best_params = best_iter_params
+
+        # Print hyperparameter distribution
+        if tuning_enabled and len(all_iter_params) > 0:
+            from collections import Counter
+
+            print(f"\n  Hyperparameter distribution across {n_iterations} iterations:")
+
+            # Count each unique parameter value
+            for param_name in [
+                "n_estimators",
+                "max_depth",
+                "min_samples_split",
+                "min_samples_leaf",
+                "max_features",
+            ]:
+                if param_name in all_iter_params[0]:
+                    values = [p.get(param_name) for p in all_iter_params if param_name in p]
+                    if values:
+                        counts = Counter(values)
+                        total = len(values)
+                        print(f"    {param_name}:")
+                        for value, count in counts.most_common():
+                            pct = 100 * count / total
+                            print(f"      {value}: {count}/{total} ({pct:.1f}%)")
+
+        rf_calibrator = None
+
+        # Optimize threshold on VALIDATION SET (not test set!)
+        if threshold_candidates:
+            threshold_metric = rf_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
+            rf_threshold, best_val_score = find_best_threshold(
+                y_inner_val,
+                rf_val_proba,
+                threshold_candidates,
+                default_threshold=0.5,
+                metric=threshold_metric,
+                beta=float(rf_config.get("tuning", {}).get("fbeta_beta", 0.5)),
+            )
+            print(
+                f"  ✓ Averaged {n_iterations} models | Threshold (val {threshold_metric}={best_val_score:.3f}): {rf_threshold:.3f}"
+            )
+        else:
+            rf_threshold = 0.5
+            print(f"  ✓ Averaged {n_iterations} models")
+
     # Hyperparameter tuning with GridSearchCV (if enabled)
-    best_params = {}
-    rf_calibrator = None
-    if rf_config.get("tuning", {}).get("enabled", False):
+    elif rf_config.get("tuning", {}).get("enabled", False):
+        best_params = {}
+        rf_calibrator = None
         (
             best_params,
             rf_model,
             rf_calibrator,
             rf_threshold,
-        ) = tune_hyperparameters_with_gridsearch(
-            X_train, y_train, rf_config, seed + fold_idx
-        )
+        ) = tune_hyperparameters_with_gridsearch(X_train, y_train, rf_config, seed + fold_idx)
     else:
         # Use default hyperparameters from config
         from sklearn.ensemble import RandomForestClassifier
@@ -453,17 +588,11 @@ def run_single_fold(
 
         # Build calibration from stratified CV on training fold
         cv_folds = rf_config.get("tuning", {}).get("cv_folds", 3)
-        fallback_cv = StratifiedKFold(
-            n_splits=cv_folds, shuffle=True, random_state=seed + fold_idx
-        )
+        fallback_cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=seed + fold_idx)
         oof_scores = []
         oof_targets = []
-        for inner_idx, (tr_idx, va_idx) in enumerate(
-            fallback_cv.split(X_train, y_train), 1
-        ):
-            temp_model = RandomForestClassifier(
-                **model_cfg, random_state=seed + fold_idx + inner_idx
-            )
+        for inner_idx, (tr_idx, va_idx) in enumerate(fallback_cv.split(X_train, y_train), 1):
+            temp_model = RandomForestClassifier(**model_cfg, random_state=seed + fold_idx + inner_idx)
             temp_model.fit(X_train[tr_idx], y_train[tr_idx])
             oof_scores.append(temp_model.predict_proba(X_train[va_idx])[:, 1])
             oof_targets.append(y_train[va_idx])
@@ -474,9 +603,7 @@ def run_single_fold(
             rf_calibrator = fit_platt_scaler(oof_scores_concat, oof_targets_concat)
             if rf_calibrator is not None and threshold_candidates:
                 calibrated_oof = apply_platt_scaler(rf_calibrator, oof_scores_concat)
-                threshold_metric = rf_config.get("evaluation", {}).get(
-                    "threshold_metric", "balanced_accuracy"
-                )
+                threshold_metric = rf_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
                 rf_threshold, _ = find_best_threshold(
                     oof_targets_concat,
                     calibrated_oof,
@@ -487,24 +614,47 @@ def run_single_fold(
                 )
 
     # Evaluate on test set with tuned threshold
-    print(
+    logger.info(
         f"\n  Evaluating on test set ({len(y_test)} subjects: {np.bincount(y_test)[1]} clinical, {np.bincount(y_test)[0]} control)..."
     )
 
-    # RF predictions with Platt calibration
-    rf_raw_proba = rf_model.predict_proba(X_test)[:, 1]
+    # RF predictions with Platt calibration (or already computed for downsampling)
+    if not use_downsampling:
+        rf_raw_proba = rf_model.predict_proba(X_test)[:, 1]
     rf_proba = apply_platt_scaler(rf_calibrator, rf_raw_proba)
     rf_pred = (rf_proba >= rf_threshold).astype(int)
     rf_score = rf_proba
     rf_metrics = compute_metrics(y_test, rf_pred, rf_score)
 
     # Print test set performance
-    print("\n  ✓ Test Set Results:")
-    print(
-        f"    Baseline (threshold={baseline_threshold:.3f}): bal_acc={baseline_metrics['balanced_accuracy']:.3f}  roc_auc={baseline_metrics.get('roc_auc', 0):.3f}  ({baseline_pred.sum()}/{len(baseline_pred)} predicted positive)"
+    from sklearn.metrics import precision_score, average_precision_score
+
+    baseline_ppv = precision_score(y_test, baseline_pred, zero_division=0)
+    baseline_pr_auc = average_precision_score(y_test, baseline_score)
+    rf_ppv = precision_score(y_test, rf_pred, zero_division=0)
+    rf_pr_auc = average_precision_score(y_test, rf_score)
+
+    # Format hyperparameters for display
+    def format_params(params):
+        parts = []
+        if "n_estimators" in params:
+            parts.append(f"n_est={params['n_estimators']}")
+        if "max_depth" in params:
+            depth = params["max_depth"]
+            parts.append(f"depth={depth if depth is not None else 'None'}")
+        if "min_samples_split" in params:
+            parts.append(f"min_split={params['min_samples_split']}")
+        if "min_samples_leaf" in params:
+            parts.append(f"min_leaf={params['min_samples_leaf']}")
+        return ", ".join(parts) if parts else "default"
+
+    logger.info("\n  ✓ Test Set Results:")
+    logger.info(f"    Hyperparams: {format_params(best_params)}")
+    logger.info(
+        f"    Baseline (thr={baseline_threshold:.3f}): bal_acc={baseline_metrics['balanced_accuracy']:.3f}  ppv={baseline_ppv:.3f}  roc_auc={baseline_metrics.get('roc_auc', 0):.3f}  pr_auc={baseline_pr_auc:.3f}  ({baseline_pred.sum()}/{len(baseline_pred)} pred+)"
     )
-    print(
-        f"    RF (threshold={rf_threshold:.3f}):       bal_acc={rf_metrics['balanced_accuracy']:.3f}  roc_auc={rf_metrics.get('roc_auc', 0):.3f}  ({rf_pred.sum()}/{len(rf_pred)} predicted positive)"
+    logger.info(
+        f"    RF (thr={rf_threshold:.3f}):      bal_acc={rf_metrics['balanced_accuracy']:.3f}  ppv={rf_ppv:.3f}  roc_auc={rf_metrics.get('roc_auc', 0):.3f}  pr_auc={rf_pr_auc:.3f}  ({rf_pred.sum()}/{len(rf_pred)} pred+)"
     )
 
     return {
@@ -544,14 +694,14 @@ def run_task_with_nested_cv(
     rf_config = env.configs.randomforest
     group_col = env.configs.data["columns"]["mapping"]["research_group"]
 
-    print(f"\n{'='*60}")
-    print(f"Task: {task_name}")
-    print(f"{'='*60}")
+    logger.info(f"\n{'='*60}")
+    logger.info(f"Task: {task_name}")
+    logger.info(f"{'='*60}")
 
     # Filter data for this task
     df_filtered, y = filter_task_data(full_df, task_config, group_col)
-    print(f"Total samples: {len(y)} | Class balance: {np.bincount(y)}")
-    print(f"Imbalance ratio: 1:{np.bincount(y)[0]/np.bincount(y)[1]:.1f}")
+    logger.info(f"Total samples: {len(y)} | Class balance: {np.bincount(y)}")
+    logger.info(f"Imbalance ratio: 1:{np.bincount(y)[0]/np.bincount(y)[1]:.1f}")
 
     # Create outer CV splitter (5-fold)
     outer_cv = get_cv_splitter(rf_config, seed)
@@ -573,9 +723,7 @@ def run_task_with_nested_cv(
         y_test = y[test_idx]
 
         # Run this fold (GridSearchCV will handle inner CV for tuning)
-        fold_result = run_single_fold(
-            env, train_df, test_df, y_train, y_test, fold_idx, seed
-        )
+        fold_result = run_single_fold(env, train_df, test_df, y_train, y_test, fold_idx, seed)
 
         baseline_folds.append(fold_result["baseline"])
         rf_folds.append(fold_result["rf"])
@@ -591,16 +739,12 @@ def run_task_with_nested_cv(
     if threshold_candidates:
         all_targets = np.concatenate([fold["y_test"] for fold in rf_folds])
         all_scores = np.concatenate([fold["y_score"] for fold in rf_folds])
-        threshold_metric = rf_config.get("evaluation", {}).get(
-            "threshold_metric", "balanced_accuracy"
-        )
+        threshold_metric = rf_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
         global_threshold, global_threshold_metric = find_best_threshold(
             all_targets,
             all_scores,
             threshold_candidates,
-            default_threshold=rf_config.get("evaluation", {}).get(
-                "decision_threshold", 0.5
-            ),
+            default_threshold=rf_config.get("evaluation", {}).get("decision_threshold", 0.5),
             metric=threshold_metric,
             beta=float(rf_config.get("tuning", {}).get("fbeta_beta", 0.5)),
         )
@@ -608,45 +752,33 @@ def run_task_with_nested_cv(
         rf_agg["global_threshold_metric"] = global_threshold_metric
 
     # Setup output directory
-    data_dir = (
-        env.repo_root
-        / "outputs"
-        / env.configs.run["run_name"]
-        / env.configs.run["run_id"]
-        / f"seed_{seed}"
-    )
+    data_dir = env.repo_root / "outputs" / env.configs.run["run_name"] / env.configs.run["run_id"] / f"seed_{seed}"
     rf_dir = data_dir / "randomforest" / task_name
     rf_dir.mkdir(parents=True, exist_ok=True)
     plots_dir = rf_dir / "plots"
     plots_dir.mkdir(exist_ok=True)
 
     # Print results
-    print(f"\n{'='*60}")
-    print(f"RESULTS: {task_name}")
-    print(f"{'='*60}")
-    print("Baseline (Logistic Regression):")
-    print(
-        f"  Overall Balanced Accuracy: {baseline_agg['overall']['balanced_accuracy']:.3f}"
-    )
-    print(f"  Overall ROC-AUC: {baseline_agg['overall'].get('roc_auc', 0):.3f}")
-    print("\nRandom Forest:")
-    print(f"  Overall Balanced Accuracy: {rf_agg['overall']['balanced_accuracy']:.3f}")
-    print(f"  Overall ROC-AUC: {rf_agg['overall'].get('roc_auc', 0):.3f}")
-    print("\nPer-Fold Stats (Mean ± Std):")
-    print(
+    logger.info(f"\n{'='*60}")
+    logger.info(f"RESULTS: {task_name}")
+    logger.info(f"{'='*60}")
+    logger.info("Baseline (Logistic Regression):")
+    logger.info(f"  Overall Balanced Accuracy: {baseline_agg['overall']['balanced_accuracy']:.3f}")
+    logger.info(f"  Overall ROC-AUC: {baseline_agg['overall'].get('roc_auc', 0):.3f}")
+    logger.info("\nRandom Forest:")
+    logger.info(f"  Overall Balanced Accuracy: {rf_agg['overall']['balanced_accuracy']:.3f}")
+    logger.info(f"  Overall ROC-AUC: {rf_agg['overall'].get('roc_auc', 0):.3f}")
+    logger.info("\nPer-Fold Stats (Mean ± Std):")
+    logger.info(
         f"  Balanced Accuracy: {rf_agg['per_fold']['balanced_accuracy_mean']:.3f} ± {rf_agg['per_fold']['balanced_accuracy_std']:.3f}"
     )
-    print(
-        f"  ROC-AUC: {rf_agg['per_fold']['roc_auc_mean']:.3f} ± {rf_agg['per_fold']['roc_auc_std']:.3f}"
-    )
+    logger.info(f"  ROC-AUC: {rf_agg['per_fold']['roc_auc_mean']:.3f} ± {rf_agg['per_fold']['roc_auc_std']:.3f}")
     if global_threshold is not None:
-        threshold_metric_name = rf_config.get("evaluation", {}).get(
-            "threshold_metric", "balanced_accuracy"
-        )
-        print(
+        threshold_metric_name = rf_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
+        logger.info(
             f"  Global threshold ({threshold_metric_name}): {global_threshold:.3f} → {global_threshold_metric:.3f}"
         )
-    print(f"{'='*60}\n")
+    logger.info(f"{'='*60}\n")
 
     if not sweep_mode:
         # Visualizations
@@ -688,16 +820,10 @@ def run_task_with_nested_cv(
 
         wandb.log(
             {
-                f"{task_name}/overall_balanced_accuracy": rf_agg["overall"][
-                    "balanced_accuracy"
-                ],
+                f"{task_name}/overall_balanced_accuracy": rf_agg["overall"]["balanced_accuracy"],
                 f"{task_name}/overall_roc_auc": rf_agg["overall"].get("roc_auc", 0),
-                f"{task_name}/per_fold_balanced_accuracy_mean": rf_agg["per_fold"][
-                    "balanced_accuracy_mean"
-                ],
-                f"{task_name}/per_fold_balanced_accuracy_std": rf_agg["per_fold"][
-                    "balanced_accuracy_std"
-                ],
+                f"{task_name}/per_fold_balanced_accuracy_mean": rf_agg["per_fold"]["balanced_accuracy_mean"],
+                f"{task_name}/per_fold_balanced_accuracy_std": rf_agg["per_fold"]["balanced_accuracy_std"],
             }
         )
 
@@ -710,25 +836,23 @@ def run_task_with_nested_cv(
 
 def run_randomforest_pipeline(env, use_wandb: bool = False, sweep_mode: bool = False):
     """Run complete Random Forest pipeline with nested CV."""
-    print("=" * 60)
-    print("Random Forest Pipeline with Nested Cross-Validation")
-    print("=" * 60)
-    print("Loading full dataset for 5-fold CV...")
+    logger.info("=" * 60)
+    logger.info("Random Forest Pipeline with Nested Cross-Validation")
+    logger.info("=" * 60)
+    logger.info("Loading full dataset for 5-fold CV...")
 
     full_df = load_full_dataset(env)
-    print(f"Total samples: {len(full_df)}")
+    logger.info(f"Total samples: {len(full_df)}")
 
     tasks = env.configs.randomforest.get("tasks", [])
     all_results = {}
 
     for task_config in tasks:
-        task_results = run_task_with_nested_cv(
-            env, full_df, task_config, use_wandb, sweep_mode
-        )
+        task_results = run_task_with_nested_cv(env, full_df, task_config, use_wandb, sweep_mode)
         all_results[task_config["name"]] = task_results
 
-    print("\n" + "=" * 60)
-    print("Random Forest Pipeline Complete")
-    print("=" * 60)
+    logger.info("\n" + "=" * 60)
+    logger.info("Random Forest Pipeline Complete")
+    logger.info("=" * 60)
 
     return all_results

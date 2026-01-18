@@ -16,9 +16,7 @@ def get_imaging_columns(df: pd.DataFrame, prefixes: list[str]) -> list[str]:
     return [col for col in df.columns if any(col.startswith(p) for p in prefixes)]
 
 
-def load_or_compute_tsne(
-    X: np.ndarray, name: str, embeddings_dir: Path, tsne_config: dict, seed: int
-) -> np.ndarray:
+def load_or_compute_tsne(X: np.ndarray, name: str, embeddings_dir: Path, tsne_config: dict, seed: int) -> np.ndarray:
     """Load existing t-SNE embedding or compute if needed."""
     complexity = tsne_config["complexity"]
     save_path = embeddings_dir / f"{name}_complexity{complexity}.pkl"
@@ -50,26 +48,44 @@ def load_or_compute_tsne(
 
 
 def prepare_metadata(baseline_preqc: pd.DataFrame, all_orig: pd.DataFrame, env) -> dict:
-    """Prepare metadata for all datasets."""
+    """Prepare metadata for all datasets using column mappings from config."""
+
+    # get column mappings from config
+    col_map = env.configs.data["columns"]["mapping"]
+    qc_cols = env.configs.data["columns"]["qc"]
+    metadata_cols = env.configs.data["columns"]["metadata"]
+    sex_map = env.configs.data["derived_variables"]["sex"]["map"]
 
     def extract_metadata(df: pd.DataFrame) -> dict:
-        return {
-            "surface_holes": df["apqc_smri_topo_ndefect"].values,
-            "scanner": df["mri_info_manufacturer"].values,
-            "research_groups": df[
-                env.configs.data["columns"]["mapping"]["research_group"]
-            ].values,
-            "age": df["demo_brthdat_v2"].astype(int).values,
-            "sex": df["demo_sex_v2"]
-            .map({1: "Male", 2: "Female"})
-            .fillna("Unknown")
-            .values,
-        }
+        metadata = {}
+
+        # QC metric (use first QC column if multiple)
+        qc_col = qc_cols[0] if isinstance(qc_cols, list) else qc_cols
+        if qc_col in df.columns:
+            metadata["surface_holes"] = df[qc_col].values
+
+        # scanner info (use first metadata column that contains 'manufacturer')
+        scanner_col = next((col for col in metadata_cols if "manufacturer" in col.lower()), None)
+        if scanner_col and scanner_col in df.columns:
+            metadata["scanner"] = df[scanner_col].values
+
+        # research groups
+        metadata["research_groups"] = df[col_map["research_group"]].values
+
+        # age
+        if col_map["age"] in df.columns:
+            metadata["age"] = df[col_map["age"]].astype(int).values
+
+        # sex with configurable mapping
+        if col_map["sex"] in df.columns:
+            metadata["sex"] = df[col_map["sex"]].map(sex_map).fillna("Unknown").values
+
+        return metadata
 
     return {
         "preqc": extract_metadata(baseline_preqc),
         "postqc": extract_metadata(all_orig),
-        "harmonized": extract_metadata(all_orig),  # Same metadata as postqc
+        "harmonized": extract_metadata(all_orig),
     }
 
 

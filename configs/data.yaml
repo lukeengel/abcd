@@ -39,6 +39,14 @@ columns:
     - demo_sex_v2
     - demo_brthdat_v2
     - cbcl_scr_dsm5_anxdisord_t
+    - cbcl_scr_syn_anxdep_r      # Anxious/Depressed raw score
+    - cbcl_scr_syn_anxdep_t      # Anxious/Depressed t-score
+    - cbcl_scr_syn_somatic_r     # Somatic Complaints raw score
+    - cbcl_scr_syn_somatic_t     # Somatic Complaints t-score
+    - cbcl_scr_syn_internal_r    # Internalizing raw score
+    - cbcl_scr_syn_internal_t    # Internalizing t-score
+    - cbcl_scr_dsm5_anxdisord_r  # Anxiety Problems raw score
+    - cbcl_scr_dsm5_anxdisord_t  # Anxiety Problems t-score (duplicate but OK)
     - mri_info_manufacturer
     - mri_info_deviceserialnumber
     - apqc_smri_topo_ndefect
