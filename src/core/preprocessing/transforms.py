@@ -56,3 +56,29 @@ def binning(env, df: pd.DataFrame) -> pd.DataFrame:
         )
 
     return df
+
+
+def create_comorbid_group(df: pd.DataFrame) -> pd.DataFrame:
+    """Create comorbid group: Clinical/Subclinical/Control based on anxiety OR psychosis."""
+    if "anx_group" not in df.columns or "psych_group" not in df.columns:
+        return df
+
+    df = df.copy()
+
+    # Clinical: Clinical in anxiety OR psychosis (includes comorbid clinical)
+    is_clinical = (df["anx_group"] == "Clinical") | (df["psych_group"] == "Clinical")
+
+    # Subclinical: Subclinical in anxiety OR psychosis, but NOT clinical
+    is_subclinical = (
+        (df["anx_group"] == "Subclinical") | (df["psych_group"] == "Subclinical")
+    ) & ~is_clinical
+
+    # Control: Control in BOTH anxiety AND psychosis
+    is_control = (df["anx_group"] == "Control") & (df["psych_group"] == "Control")
+
+    df.loc[:, "comorbid_group"] = None
+    df.loc[is_control, "comorbid_group"] = "Control"
+    df.loc[is_subclinical, "comorbid_group"] = "Subclinical"
+    df.loc[is_clinical, "comorbid_group"] = "Clinical"
+
+    return df

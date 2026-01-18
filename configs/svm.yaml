@@ -1,0 +1,116 @@
+tuning:
+  enabled: true
+  cv_folds: 3
+  scoring: roc_auc
+  fbeta_beta: 0.6
+  n_jobs: 1
+  param_grid:
+    kernel:
+    - linear
+    - rbf
+    C:
+    - 0.001
+    - 0.005
+    - 0.01
+    #- 0.05
+    #- 0.1
+    gamma:
+    - scale
+    class_weight:
+    - null
+    #- balanced
+    #- 0: 1.0
+    #  1: 1.0 # No class_weight needed with downsampling
+cv:
+  n_outer_splits: 5
+  inner_val_ratio: 0.25
+  shuffle: true
+baseline:
+  class_weight: balanced  # Don't use class_weight - LR already handles imbalance well
+  max_iter: 2000
+  solver: lbfgs
+  penalty: l2
+  C: 0.1  # Stronger regularization for imbalanced data
+model:
+  kernel: rbf
+  C: 0.005
+  gamma: scale
+  class_weight: null  # No class_weight needed with downsampling
+  probability: false
+  max_iter: -1
+  tol: 0.001
+sweep:
+  enabled: false
+  param_grid:
+  - kernel:
+    - linear
+    C:
+    - 0.01
+    - 0.1
+    - 1.0
+    - 10.0
+  - kernel:
+    - rbf
+    C:
+    - 0.01
+    - 0.1
+    - 1.0
+    - 10.0
+    gamma:
+    - scale
+    - auto
+    - 0.01
+    - 0.1
+tasks:
+- name: any_vs_control
+  positive_classes:
+  - Clinical
+  - Subclinical
+  negative_class: Control
+- name: clinical_vs_control
+  positive_class: Clinical
+  negative_class: Control
+- name: subclinical_vs_control
+  positive_class: Subclinical
+  negative_class: Control
+- name: clinical_vs_subclinical
+  positive_class: Clinical
+  negative_class: Subclinical
+downsampling:
+  enabled: true
+  n_iterations: 100
+evaluation:
+  bootstrap:
+    enabled: true
+    iterations: 1000
+  decision_threshold: 0.5  # Default, will be optimized
+  threshold_metric: balanced_accuracy  # Good for imbalanced validation set
+  threshold_search:
+    enabled: true
+    thresholds:
+    - 0.01
+    - 0.02
+    - 0.03
+    - 0.05
+    - 0.08
+    - 0.10
+    - 0.15
+    - 0.20
+    - 0.25
+    - 0.30
+    - 0.40
+    - 0.50
+    - 0.60
+    - 0.70
+interpretation:
+  top_n_pcs: 10
+  top_n_features: 20
+  n_repeats: 3
+imaging_prefixes:
+- dmri
+- smri_area_cdk
+- smri_thick_cdk
+- smri_sulc_cdk
+- smri_vol_cdk
+- smri_vol_scs
+- mrisdp

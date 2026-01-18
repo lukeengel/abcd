@@ -1,0 +1,31 @@
+# W&B Sweep Configuration for SVM Hyperparameter Search
+# Optimizes for any_vs_control task (any psychosis vs control)
+
+project: abcd-svm
+program: run_svm.py
+method: bayes
+metric:
+  name: any_vs_control/cv_balanced_accuracy
+  goal: maximize
+
+parameters:
+  kernel:
+    values: [linear, rbf]
+  C:
+    distribution: log_uniform_values
+    min: 0.01
+    max: 100.0
+  gamma:
+    values: [scale, auto, 0.001, 0.01]
+
+early_terminate:
+  type: hyperband
+  min_iter: 3
+  s: 2
+  eta: 3
+
+command:
+  - ${env}
+  - python
+  - ${program}
+  - "--sweep"

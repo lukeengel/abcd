@@ -1,0 +1,181 @@
+# Regression configuration for CBCL subscale prediction
+# Predict continuous CBCL scores from brain imaging features
+
+use_pca: true  # Use PCA features
+
+# Target subscales to predict
+# Choose either raw scores (_r) or t-scores (_t)
+# Raw scores: discrete 0-26, zero-inflated, interpretable as # of symptoms
+# T-scores: normalized (mean=50, SD=10), more continuous, age/sex adjusted
+
+targets:
+  # RAW SCORES
+  - name: anxious_depressed_raw
+    column: cbcl_scr_syn_anxdep_r
+    description: "CBCL Anxious/Depressed raw score (0-26)"
+
+  - name: somatic_raw
+    column: cbcl_scr_syn_somatic_r
+    description: "CBCL Somatic raw score (0-22)"
+
+  - name: internalizing_raw
+    column: cbcl_scr_syn_internal_r
+    description: "CBCL Internalizing raw score (0-66)"
+
+  - name: anxiety_problems_raw
+    column: cbcl_scr_dsm5_anxdisord_r
+    description: "CBCL Anxiety Problems raw score (0-12)"
+
+  # T-SCORES
+  - name: anxious_depressed_t
+    column: cbcl_scr_syn_anxdep_t
+    description: "CBCL Anxious/Depressed t-score (normalized)"
+
+  - name: somatic_t
+    column: cbcl_scr_syn_somatic_t
+    description: "CBCL Somatic t-score"
+
+  - name: internalizing_t
+    column: cbcl_scr_syn_internal_t
+    description: "CBCL Internalizing t-score"
+
+  - name: anxiety_problems_t
+    column: cbcl_scr_dsm5_anxdisord_t
+    description: "CBCL Anxiety Problems t-score"
+
+# Model configurations (test multiple models)
+models:
+  linear:
+    enabled: true
+    # No hyperparameters (OLS regression, no regularization)
+
+  ridge:
+    enabled: true
+    alpha: 0.1  # Reduced from 1.0 - weaker regularization to preserve weak signal
+
+  elastic_net:
+    enabled: true
+    alpha: 0.01
+    l1_ratio: 0.5  # Balance between L1 and L2
+
+  svr:
+    enabled: false
+    kernel: rbf
+    C: 1.0
+    epsilon: 0.1
+
+  random_forest:
+    enabled: true
+    n_estimators: 100
+    max_depth: 10
+    min_samples_leaf: 20
+
+  mlp:
+    enabled: false
+    hidden_layer_sizes: [64, 32]
+    activation: relu
+    alpha: 0.001
+    learning_rate: adaptive
+    max_iter: 3000
+    early_stopping: true
+
+# Hyperparameter tuning
+tuning:
+  enabled: false
+  cv_folds: 3
+  n_jobs: -1
+  param_grids:
+    ridge:
+      alpha: [0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+    elastic_net:
+      alpha: [0.001, 0.01, 0.1, 1.0]
+      l1_ratio: [0.1, 0.5, 0.9]
+    random_forest:
+      max_depth: [10, 15, 20]
+      min_samples_leaf: [3, 5, 10]
+
+# Cross-validation settings (nested CV)
+cv:
+  n_outer_splits: 5
+  shuffle: true
+
+# Baseline model (always fit for comparison)
+baseline:
+  model: ridge
+  alpha: 1.0
+
+# Evaluation metrics
+evaluation:
+  metrics:
+    - r2
+    - mae
+    - mse
+    - rmse
+    - pearson_r
+    - spearman_r
+
+# Feature importance
+interpretation:
+  enabled: true
+  top_n_features: 20
+  methods:
+    - permutation
+    - coefficients
+
+# Imaging feature prefixes (same as classification tasks)
+imaging_prefixes:
+  - dmri
+  - smri_area_cdk
+  - smri_thick_cdk
+  - smri_sulc_cdk
+  - smri_vol_cdk
+  - smri_vol_scs
+  - mrisdp
+
+# Outlier handling
+outliers:
+  enabled: false
+  method: iqr
+  threshold: 3.0  # IQR multiplier (3.0 = extreme outliers)
+
+# Missing data handling
+missing:
+  require_complete_targets: true
+
+# Covariate handling (residualization)
+covariates:
+  residualize: false  # Set to true to regress out age/sex from target
+  columns:
+    - demo_brthdat_v2
+    - sex_mapped
+  apply_to_raw_scores_only: true  # Only residualize raw scores, not t-scores (already adjusted)
+
+# Sample weighting for imbalanced regression
+sample_weighting:
+  enabled: true  # Set to true to enable sample weighting
+
+  method: "downsample"  # Options: "inverse_freq" (binned), "inverse_histogram" (continuous), or "downsample"
+
+  # Custom bin edges - define your own bins for weighting
+  # Bins are defined as [edge1, edge2, edge3, ...]
+  # Creates bins: [edge1-edge2), [edge2-edge3), [edge3-edge4), ...
+  #
+  # EXAMPLES:
+  # Raw scores (0-26):
+  #   [0, 3, 6, 11, 27]  → bins: [0-2], [3-5], [6-10], [11-26]
+  #   [5, 10, 15, 27]    → bins: [5-9], [10-14], [15-26] (excludes 0-4!)
+  #
+  # T-scores (50-100):
+  #   [50, 60, 70, 101]  → bins: [50-59], [60-69], [70-100]
+  #   [60, 70, 101]      → bins: [60-69], [70-100] (excludes <60!)
+  #
+  custom_bins:
+    # Finer bins at high end: narrow bins = fewer subjects = higher weights
+    anxious_depressed_raw: [0, 3, 6, 9, 12, 15, 27]  # Severe (15+) gets max weight
+    anxious_depressed_t: [50, 55, 60, 65, 70, 75, 80, 101]  # T>=70 clinical, T>=80 severe
+    somatic_raw: [0, 2, 4, 6, 8, 10, 23]  # Severe (10+) gets max weight
+    somatic_t: [50, 55, 60, 65, 70, 75, 89]  # T>=70 clinical, T>=75 severe
+    internalizing_raw: [0, 5, 10, 15, 20, 25, 67]  # Severe (25+) gets max weight
+    internalizing_t: [33, 42, 51, 60, 69, 78, 94]  # T>=69 clinical
+    anxiety_problems_raw: [0, 2, 4, 6, 8, 10, 18]  # Severe (10+) gets max weight
+    anxiety_problems_t: [65, 70, 75, 98]  # T>=70 clinical, T>=75 severe

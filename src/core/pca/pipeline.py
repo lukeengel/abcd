@@ -7,8 +7,9 @@ import pandas as pd
 from tqdm import tqdm
 
 from ..tsne.embeddings import get_imaging_columns, save_metadata
+from ..tsne.plotting import setup_plotting_style
 from .embeddings import load_or_fit_pca, transform_and_save
-from .plotting import plot_pca_comparison, plot_scree, setup_plotting_style
+from .plotting import plot_pca_comparison, plot_scree
 
 
 def run_pca_analysis(env) -> dict:
