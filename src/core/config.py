@@ -51,7 +51,7 @@ def _adapt_data_config(data_config: dict, run_name: str) -> None:
     """Adapt data configuration based on research question."""
 
     # Supported research questions
-    valid_questions = ["anxiety", "psychosis"]
+    valid_questions = ["anxiety", "psychosis", "comorbidity"]
 
     if run_name not in valid_questions:
         raise ValueError(
@@ -75,12 +75,39 @@ def _adapt_data_config(data_config: dict, run_name: str) -> None:
         # Remove group_last_final from metadata if present
         if "group_last_final" in data_config["columns"]["metadata"]:
             data_config["columns"]["metadata"].remove("group_last_final")
+    elif run_name == "comorbidity":
+        # Comorbidity: use comorbid_group (anxiety OR psychosis)
+        data_config["columns"]["mapping"]["research_group"] = "comorbid_group"
+        data_config["columns"]["derived"] = [
+            "sex_mapped",
+            "anx_group",
+            "psych_group",
+            "comorbid_group",
+        ]
+        # Ensure group_last_final is in metadata
+        if "group_last_final" not in data_config["columns"]["metadata"]:
+            data_config["columns"]["metadata"].append("group_last_final")
 
 
 def _set_dir():
-    """Set directory"""
+    """Set directory - find project root by looking for configs/ directory."""
     cwd = Path.cwd()
-    return cwd if (cwd / "configs").exists() else cwd.parent
+
+    # Walk up the directory tree until we find configs/
+    current = cwd
+    max_levels = 5  # Safety limit
+    for _ in range(max_levels):
+        if (current / "configs").exists():
+            return current
+        if current.parent == current:  # Reached filesystem root
+            break
+        current = current.parent
+
+    # Fallback to original behavior
+    raise FileNotFoundError(
+        f"Could not find 'configs' directory. Started from: {cwd}\n"
+        f"Make sure you're running from within the project directory."
+    )
 
 
 def _load_configs():

@@ -14,7 +14,7 @@ from .artifacts import (
 from .ingest import load_and_merge
 from .qc import quality_control
 from .splits import create_modeling_splits, timepoint_split
-from .transforms import binning, recode
+from .transforms import binning, recode, create_comorbid_group
 from .missing import handle_missing
 
 
@@ -48,6 +48,10 @@ def preprocess_abcd_data(env) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
         pbar.set_description("Step 4/8: Binning variables")
         binned_df = binning(env, recoded_df)
         pbar.update(1)
+
+        pbar.set_description("Step 4b/8: Creating comorbid group")
+        binned_df = create_comorbid_group(binned_df)
+        pbar.update(0)  # Don't increment, just added substep
 
         pbar.set_description("Step 5/8: Running quality control")
         qc_augmented_df, qc_mask = quality_control(env, binned_df, copy=True)

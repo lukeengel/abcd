@@ -2,9 +2,12 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.ruff_cache/
 
 # Data
 data/
+
+docs/
 
 # OS
 .DS_Store
@@ -24,3 +27,28 @@ htmlcov/
 # Temporary files
 *.tmp
 *.temp
+*.log
+
+# W&B
+wandb/
+
+# SLURM logs
+logs/
+*.out
+*.err
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Models
+*.pkl
+*.joblib
+
+# Local development
+.local/

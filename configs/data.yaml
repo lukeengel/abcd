@@ -5,6 +5,7 @@ files:
     - data/raw/mri_y_adm_info.csv
     - data/raw/mri_y_qc_auto_post.csv
     - data/raw/RVI_groups.csv
+  data_dictionary: data/raw/Data Dictionary.csv
   imaging:
     - data/raw/mri_y_dti_fa_is_at.csv
     - data/raw/mri_y_dti_ld_is_at.csv
@@ -38,6 +39,14 @@ columns:
     - demo_sex_v2
     - demo_brthdat_v2
     - cbcl_scr_dsm5_anxdisord_t
+    - cbcl_scr_syn_anxdep_r      # Anxious/Depressed raw score
+    - cbcl_scr_syn_anxdep_t      # Anxious/Depressed t-score
+    - cbcl_scr_syn_somatic_r     # Somatic Complaints raw score
+    - cbcl_scr_syn_somatic_t     # Somatic Complaints t-score
+    - cbcl_scr_syn_internal_r    # Internalizing raw score
+    - cbcl_scr_syn_internal_t    # Internalizing t-score
+    - cbcl_scr_dsm5_anxdisord_r  # Anxiety Problems raw score
+    - cbcl_scr_dsm5_anxdisord_t  # Anxiety Problems t-score (duplicate but OK)
     - mri_info_manufacturer
     - mri_info_deviceserialnumber
     - apqc_smri_topo_ndefect
@@ -92,8 +101,8 @@ derived:
     source: t_score
     output: anx_group
     thresholds:
-      control_max: 59
-      subclinical_max: 64
+      control_max: 54
+      subclinical_max: 69
     labels:
       control: Control
       subclinical: Subclinical
@@ -112,6 +121,13 @@ derived:
       "3": Subclinical
       "4": Subclinical
       "5": Control
+  comorbidity:
+    # Created by create_comorbid_group() function in preprocessing
+    # Clinical: Clinical in anxiety OR psychosis
+    # Subclinical: Subclinical in anxiety OR psychosis (but not clinical)
+    # Control: Control in both anxiety AND psychosis
+    source: derived  # Computed from anx_group and psych_group
+    output: comorbid_group
 
 missing:
   require_complete_metadata:

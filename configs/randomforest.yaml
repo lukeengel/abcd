@@ -1,0 +1,91 @@
+use_pca: false
+tuning:
+  enabled: false
+  cv_folds: 3
+  scoring: roc_auc
+  fbeta_beta: 1.0  # For threshold optimization - F1 score (equal balance of precision and recall)
+  n_jobs: -1
+  param_grid:
+    n_estimators:
+    - 400
+    max_depth:
+    - 15
+    min_samples_leaf:
+    - 12
+    min_samples_split:
+    - 10
+    max_features:
+    - sqrt
+    class_weight:
+    - null  # No class_weight needed with downsampling
+
+cv:
+  n_outer_splits: 5
+  inner_val_ratio: 0.25
+  shuffle: true
+baseline:
+  class_weight: null
+  max_iter: 2000
+  solver: lbfgs
+  penalty: l2
+  C: 0.1
+model:
+  n_estimators: 400
+  max_depth: 15
+  min_samples_split: 10
+  min_samples_leaf: 12
+  max_features: sqrt
+  class_weight: null
+  bootstrap: true
+  oob_score: true
+  n_jobs: -1
+  random_state: null
+  max_samples: 0.8
+tasks:
+- name: any_vs_control
+  positive_classes:
+  - Clinical
+  - Subclinical
+  negative_class: Control
+- name: clinical_vs_control
+  positive_class: Clinical
+  negative_class: Control
+- name: subclinical_vs_control
+  positive_class: Subclinical
+  negative_class: Control
+- name: clinical_vs_subclinical
+  positive_class: Clinical
+  negative_class: Subclinical
+downsampling:
+  enabled: true
+  n_iterations: 100
+evaluation:
+  bootstrap:
+    enabled: true
+    iterations: 1000
+  decision_threshold: 0.5  # Default, will be optimized
+  threshold_metric: fbeta  # Use F-beta to balance precision/recall
+  threshold_search:
+    enabled: true
+    thresholds:
+    - 0.02
+    - 0.05
+    - 0.08
+    - 0.10
+    - 0.15
+    - 0.20
+    - 0.25
+    - 0.30
+    - 0.40
+    - 0.50
+interpretation:
+  top_n_features: 20
+  permutation_importance: false
+imaging_prefixes:
+- dmri
+- smri_area_cdk
+- smri_thick_cdk
+- smri_sulc_cdk
+- smri_vol_cdk
+- smri_vol_scs
+- mrisdp
