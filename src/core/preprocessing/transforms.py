@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 
 
@@ -82,3 +84,57 @@ def create_comorbid_group(df: pd.DataFrame) -> pd.DataFrame:
     df.loc[is_clinical, "comorbid_group"] = "Clinical"
 
     return df
+
+
+def load_family_history(fhx_path: str | Path, scope: str = "psychosis") -> pd.DataFrame:
+    """Load and derive family history variables from mh_p_fhx.csv.
+
+    Q8 (visions) items encode psychosis family history:
+        a = mother, b = father, c-f = grandparents
+        1 = Yes, 0 = No
+
+    Args:
+        fhx_path: Path to mh_p_fhx.csv
+        scope: 'psychosis' for Q8 only, 'broad' to include Q6-Q7, Q10-Q13
+
+    Returns:
+        DataFrame with src_subject_id + derived binary/count variables.
+    """
+    fhx = pd.read_csv(fhx_path, low_memory=False)
+
+    # Q8: visions (psychosis) — a=mother, b=father, c-f=grandparents
+    psychosis_cols = [f"fam_history_q8{s}_visions" for s in "abcdef"]
+    parent_cols = [f"fam_history_q8{s}_visions" for s in "ab"]
+
+    # Coerce to numeric (may contain NaN / non-numeric)
+    for col in psychosis_cols:
+        if col in fhx.columns:
+            fhx[col] = pd.to_numeric(fhx[col], errors="coerce")
+
+    present = [c for c in psychosis_cols if c in fhx.columns]
+    parent_present = [c for c in parent_cols if c in fhx.columns]
+
+    out = fhx[["src_subject_id", "eventname"]].copy()
+    out["fhx_psychosis_any"] = (fhx[present].eq(1).any(axis=1)).astype(int)
+    out["fhx_psychosis_parent"] = (fhx[parent_present].eq(1).any(axis=1)).astype(int)
+    out["fhx_psychosis_count"] = fhx[present].eq(1).sum(axis=1)
+
+    if scope == "broad":
+        broad_items = {
+            "depression": "q6",
+            "mania": "q7",
+            "nerves": "q10",
+            "professional": "q11",
+            "hospitalized": "q12",
+            "suicide": "q13",
+        }
+        for label, q_prefix in broad_items.items():
+            cols = [f"fam_history_{q_prefix}{s}_{label}" for s in "abcdef"]
+            for col in cols:
+                if col in fhx.columns:
+                    fhx[col] = pd.to_numeric(fhx[col], errors="coerce")
+            cols_present = [c for c in cols if c in fhx.columns]
+            if cols_present:
+                out[f"fhx_{label}_any"] = (fhx[cols_present].eq(1).any(axis=1)).astype(int)
+
+    return out

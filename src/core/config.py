@@ -51,7 +51,7 @@ def _adapt_data_config(data_config: dict, run_name: str) -> None:
     """Adapt data configuration based on research question."""
 
     # Supported research questions
-    valid_questions = ["anxiety", "psychosis", "comorbidity"]
+    valid_questions = ["anxiety", "psychosis", "comorbidity", "regression"]
 
     if run_name not in valid_questions:
         raise ValueError(
@@ -61,7 +61,20 @@ def _adapt_data_config(data_config: dict, run_name: str) -> None:
             f"in src/core/config.py and add color scheme in configs/tsne.yaml"
         )
 
-    if run_name == "psychosis":
+    if run_name == "regression":
+        # Regression: no research_group needed, maximize subject count
+        data_config["columns"]["derived"] = ["sex_mapped"]
+        # Remove research_group from required metadata
+        missing_cfg = data_config.get("missing", {})
+        req = missing_cfg.get("require_complete_metadata", [])
+        if "research_group" in req:
+            req.remove("research_group")
+        # Remove group_last_final from metadata (not needed)
+        if "group_last_final" in data_config["columns"]["metadata"]:
+            data_config["columns"]["metadata"].remove("group_last_final")
+        # No stratification by group
+        data_config["splits"]["stratify"] = None
+    elif run_name == "psychosis":
         # Psychosis: use psych_group derived from group_last_final
         data_config["columns"]["mapping"]["research_group"] = "psych_group"
         data_config["columns"]["derived"] = ["sex_mapped", "psych_group"]
@@ -133,6 +146,17 @@ def _create_output_folder(env):
     output_dir = env.repo_root / "outputs" / run_name / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
+
+
+def get_figures_dir(env, notebook: str) -> Path:
+    """Return and create figures directory for a specific notebook's run."""
+    run_cfg = env.configs.run
+    fig_dir = (
+        env.repo_root / "outputs" / run_cfg["run_name"]
+        / run_cfg["run_id"] / "figures" / notebook
+    )
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    return fig_dir
 
 
 def _persist_run_config(repo_root: Path, run_cfg: dict) -> None:

@@ -47,12 +47,19 @@ def apply_platt_scaler(scaler: LogisticRegression | None, raw_scores: np.ndarray
 
 def extract_rf_harmonization_data(df: pd.DataFrame, env) -> tuple[np.ndarray, pd.DataFrame]:
     """Extract imaging features and covariates for RF harmonization."""
-    from ..tsne.embeddings import get_imaging_columns
+    from ..tsne.embeddings import get_imaging_columns, get_roi_columns_from_config
 
     rf_config = env.configs.randomforest
     harm_config = env.configs.harmonize
 
-    imaging_cols = get_imaging_columns(df, rf_config["imaging_prefixes"])
+    # ROI feature selection (same pattern as MLP/regression)
+    roi_columns = None
+    if rf_config.get("feature_mode") == "roi":
+        roi_networks = rf_config.get("roi_networks", [])
+        if roi_networks:
+            roi_columns = get_roi_columns_from_config(env.configs.data, roi_networks)
+
+    imaging_cols = get_imaging_columns(df, rf_config["imaging_prefixes"], roi_columns)
     X = df[imaging_cols].values
 
     site_col = harm_config["site_column"]
@@ -732,24 +739,10 @@ def run_task_with_nested_cv(
     baseline_agg = aggregate_cv_predictions(baseline_folds)
     rf_agg = aggregate_cv_predictions(rf_folds)
 
-    # Global threshold sweep on aggregated predictions (post-hoc)
-    threshold_candidates = get_threshold_candidates(rf_config)
-    global_threshold = None
-    global_threshold_metric = None
-    if threshold_candidates:
-        all_targets = np.concatenate([fold["y_test"] for fold in rf_folds])
-        all_scores = np.concatenate([fold["y_score"] for fold in rf_folds])
-        threshold_metric = rf_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
-        global_threshold, global_threshold_metric = find_best_threshold(
-            all_targets,
-            all_scores,
-            threshold_candidates,
-            default_threshold=rf_config.get("evaluation", {}).get("decision_threshold", 0.5),
-            metric=threshold_metric,
-            beta=float(rf_config.get("tuning", {}).get("fbeta_beta", 0.5)),
-        )
-        rf_agg["global_threshold"] = global_threshold
-        rf_agg["global_threshold_metric"] = global_threshold_metric
+    # NOTE: Global threshold sweep on aggregated test predictions was removed
+    # because it constitutes test-set leakage (optimizing threshold on the same
+    # data used to report performance). Per-fold validation-optimized thresholds
+    # are used instead.
 
     # Setup output directory
     data_dir = env.repo_root / "outputs" / env.configs.run["run_name"] / env.configs.run["run_id"] / f"seed_{seed}"
@@ -773,11 +766,6 @@ def run_task_with_nested_cv(
         f"  Balanced Accuracy: {rf_agg['per_fold']['balanced_accuracy_mean']:.3f} ± {rf_agg['per_fold']['balanced_accuracy_std']:.3f}"
     )
     logger.info(f"  ROC-AUC: {rf_agg['per_fold']['roc_auc_mean']:.3f} ± {rf_agg['per_fold']['roc_auc_std']:.3f}")
-    if global_threshold is not None:
-        threshold_metric_name = rf_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
-        logger.info(
-            f"  Global threshold ({threshold_metric_name}): {global_threshold:.3f} → {global_threshold_metric:.3f}"
-        )
     logger.info(f"{'='*60}\n")
 
     if not sweep_mode:
@@ -808,7 +796,6 @@ def run_task_with_nested_cv(
             "rf": rf_agg,
             "baseline_folds": baseline_folds,
             "rf_folds": rf_folds,
-            "global_threshold": global_threshold,
         }
         with open(rf_dir / "results.pkl", "wb") as f:
             pickle.dump(results, f)
@@ -830,7 +817,6 @@ def run_task_with_nested_cv(
     return {
         "baseline": baseline_agg,
         "rf": rf_agg,
-        "global_threshold": global_threshold,
     }
 
 

@@ -38,7 +38,7 @@ def create_modeling_splits(
     )
     ratios /= ratios.sum()
 
-    research_col = config["columns"]["mapping"]["research_group"]
+    research_col = config["columns"]["mapping"].get("research_group")
     id_col = config["columns"]["mapping"]["id"]
     timepoint_col = config["columns"]["mapping"]["timepoint"]
 
@@ -46,7 +46,12 @@ def create_modeling_splits(
     if qc_pass_df.empty:
         raise ValueError("No QC-pass rows available for splitting")
 
-    labels = qc_pass_df[research_col].astype("string").fillna("unknown")
+    stratify_key = config.get("splits", {}).get("stratify")
+    if stratify_key and research_col and research_col in qc_pass_df.columns:
+        labels = qc_pass_df[research_col].astype("string").fillna("unknown")
+    else:
+        # No stratification — use dummy labels for uniform random split
+        labels = pd.Series(["all"] * len(qc_pass_df))
 
     sss = StratifiedShuffleSplit(
         n_splits=1,

@@ -1,8 +1,11 @@
 # Harmonization configuration
-site_column: mri_info_manufacturer
+# Use scanner model (8 categories) for finer-grained harmonization
+# than just manufacturer (3 categories: Siemens, GE, Philips)
+# Options: mri_info_manufacturer (3), mri_info_manufacturersmn (8), mri_info_deviceserialnumber (29)
+site_column: mri_info_manufacturersmn
 covariates:
   - demo_brthdat_v2
-  - demo_sex_v2
+  - sex_mapped
 
 # ComBat parameters
 empirical_bayes: true

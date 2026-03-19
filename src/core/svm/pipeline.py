@@ -19,6 +19,7 @@ from .evaluation import (
     get_cv_splitter,
 )
 from .feature_mapping import enrich_brain_regions
+from sklearn.inspection import permutation_importance
 from .interpretation import (
     get_feature_importance_permutation,
     map_pca_to_brain_regions,
@@ -28,6 +29,22 @@ from .preprocessing import apply_pca_to_fold, fit_pca_on_dev
 from .visualization import plot_confusion_matrix, plot_feature_importance
 
 logger = logging.getLogger(__name__)
+
+
+class EnsemblePredictor:
+    """Wrapper that averages predictions from multiple models for permutation importance."""
+
+    def __init__(self, models, use_probability=True):
+        self.models = models
+        self.use_probability = use_probability
+
+    def predict(self, X):
+        if self.use_probability and hasattr(self.models[0], "predict_proba"):
+            probas = np.array([m.predict_proba(X)[:, 1] for m in self.models])
+            return (probas.mean(axis=0) >= 0.5).astype(int)
+        else:
+            scores = np.array([m.decision_function(X) for m in self.models])
+            return (scores.mean(axis=0) >= 0).astype(int)
 
 
 def fit_platt_scaler(scores: np.ndarray, targets: np.ndarray) -> LogisticRegression | None:
@@ -64,8 +81,48 @@ def load_full_dataset(env) -> pd.DataFrame:
     return full_df
 
 
+def create_extreme_groups(df: pd.DataFrame, extreme_cfg: dict, research_question: str) -> pd.DataFrame:
+    """Create High/Low extreme group labels from raw scores or existing groups."""
+    df = df.copy()
+    cfg = extreme_cfg.get(research_question, {})
+
+    if not cfg:
+        return df
+
+    col = cfg.get("column")
+    if col not in df.columns:
+        logger.warning(f"Extreme groups column '{col}' not found")
+        return df
+
+    # Method 1: Fixed thresholds (for raw scores)
+    if "high_min" in cfg:
+        high_mask = df[col] >= cfg["high_min"]
+        low_mask = df[col] <= cfg["low_max"]
+        df["extreme_group"] = None
+        df.loc[high_mask, "extreme_group"] = "High"
+        df.loc[low_mask, "extreme_group"] = "Low"
+    # Method 2: Value mapping (for categorical like psychosis)
+    elif "high_values" in cfg:
+        high_mask = df[col].isin(cfg["high_values"])
+        low_mask = df[col].isin(cfg["low_values"])
+        df["extreme_group"] = None
+        df.loc[high_mask, "extreme_group"] = "High"
+        df.loc[low_mask, "extreme_group"] = "Low"
+
+    n_high = (df["extreme_group"] == "High").sum()
+    n_low = (df["extreme_group"] == "Low").sum()
+    print(f"Extreme groups created: High={n_high}, Low={n_low}")
+    logger.info(f"Extreme groups: High={n_high}, Low={n_low}")
+
+    return df
+
+
 def filter_task_data(df: pd.DataFrame, task_config: dict, group_col: str) -> tuple[pd.DataFrame, np.ndarray]:
     """Filter data for specific classification task."""
+    # Use extreme_group column if this is an extreme groups task
+    if task_config.get("use_extreme_groups"):
+        group_col = "extreme_group"
+
     pos_classes = task_config.get("positive_classes") or [task_config.get("positive_class")]
     neg_class = task_config["negative_class"]
 
@@ -379,6 +436,18 @@ def run_single_fold(
         imbalance = max(np.bincount(y_train)) / min(np.bincount(y_train))
         print(f"  Imbalance: {imbalance:.1f}:1 → 1:1")
 
+        tuning_enabled = svm_config.get("tuning", {}).get("enabled", False)
+
+        # Tune hyperparameters ONCE on full training data (not per iteration)
+        if tuning_enabled:
+            print("  Tuning hyperparameters once on full training data...")
+            tuned_params, _, _, _ = tune_hyperparameters_with_gridsearch(
+                X_train_pca, y_train, svm_config, seed + fold_idx
+            )
+            print(f"  Using tuned params for all {n_iterations} iterations: {tuned_params}")
+        else:
+            tuned_params = None
+
         # Split training into train/val for threshold optimization
         inner_val_ratio = svm_config.get("cv", {}).get("inner_val_ratio", 0.25)
         X_inner_train, X_inner_val, y_inner_train, y_inner_val = train_test_split(
@@ -391,10 +460,19 @@ def run_single_fold(
 
         all_val_probas = []
         all_test_probas = []
-        all_iter_params = []  # Track all params to see distribution
-        best_iter_roc_auc = -1
-        best_iter_params = {}
-        tuning_enabled = svm_config.get("tuning", {}).get("enabled", False)
+        all_models = []  # Store all models for ensemble feature importance
+
+        # Build model config (tuned or default)
+        model_cfg = svm_config["model"].copy()
+        if tuned_params is not None:
+            model_cfg.update(tuned_params)
+
+        from sklearn.metrics import (
+            roc_auc_score,
+            balanced_accuracy_score,
+            precision_score,
+            average_precision_score,
+        )
 
         pbar = tqdm_auto(range(n_iterations), desc="  Training")
         for iter_idx in pbar:
@@ -403,39 +481,18 @@ def run_single_fold(
             X_train_balanced = X_inner_train[balanced_idx]
             y_train_balanced = y_inner_train[balanced_idx]
 
-            # Train model (suppress tuning output, keep stderr for tqdm)
-            if tuning_enabled:
-                old_stdout = sys.stdout
-                sys.stdout = open(os.devnull, "w")
-                try:
-                    (
-                        iter_best_params,
-                        iter_model,
-                        _,
-                        _,
-                    ) = tune_hyperparameters_with_gridsearch(
-                        X_train_balanced,
-                        y_train_balanced,
-                        svm_config,
-                        seed + fold_idx + iter_idx,
-                    )
-                finally:
-                    sys.stdout.close()
-                    sys.stdout = old_stdout
-            else:
-                model_cfg = svm_config["model"].copy()
-                iter_model = SVC(
-                    kernel=model_cfg.get("kernel", "linear"),
-                    C=model_cfg.get("C", 1.0),
-                    gamma=model_cfg.get("gamma", "scale"),
-                    class_weight=model_cfg.get("class_weight", "balanced"),
-                    max_iter=model_cfg.get("max_iter", -1),
-                    tol=model_cfg.get("tol", 0.001),
-                    probability=use_probability,
-                    random_state=seed + fold_idx + iter_idx,
-                )
-                iter_model.fit(X_train_balanced, y_train_balanced)
-                iter_best_params = model_cfg
+            # Train model with consistent hyperparameters
+            iter_model = SVC(
+                kernel=model_cfg.get("kernel", "linear"),
+                C=model_cfg.get("C", 1.0),
+                gamma=model_cfg.get("gamma", "scale"),
+                class_weight=model_cfg.get("class_weight", "balanced"),
+                max_iter=model_cfg.get("max_iter", -1),
+                tol=model_cfg.get("tol", 0.001),
+                probability=use_probability,
+                random_state=seed + fold_idx + iter_idx,
+            )
+            iter_model.fit(X_train_balanced, y_train_balanced)
 
             # Predict on validation set (for threshold optimization)
             if use_probability and hasattr(iter_model, "predict_proba"):
@@ -449,26 +506,14 @@ def run_single_fold(
 
             all_val_probas.append(iter_val_proba)
             all_test_probas.append(iter_test_proba)
+            all_models.append(iter_model)
 
             # Compute validation metrics for monitoring
-            from sklearn.metrics import (
-                roc_auc_score,
-                balanced_accuracy_score,
-                precision_score,
-                average_precision_score,
-            )
-
             iter_val_pred = (iter_val_proba >= 0.5).astype(int)
             iter_bal_acc = balanced_accuracy_score(y_inner_val, iter_val_pred)
             iter_ppv = precision_score(y_inner_val, iter_val_pred, zero_division=0)
             iter_roc_auc = roc_auc_score(y_inner_val, iter_val_proba)
             iter_pr_auc = average_precision_score(y_inner_val, iter_val_proba)
-
-            # Track all params and best performing iteration
-            all_iter_params.append(iter_best_params)
-            if iter_roc_auc > best_iter_roc_auc:
-                best_iter_roc_auc = iter_roc_auc
-                best_iter_params = iter_best_params
 
             pbar.set_postfix(
                 {
@@ -484,28 +529,10 @@ def run_single_fold(
         # Average predictions
         svm_val_score = np.mean(all_val_probas, axis=0)
         svm_raw_score = np.mean(all_test_probas, axis=0)
-        svm_model = iter_model  # Keep last model for reference
+        svm_model = all_models  # Store all models for ensemble feature importance
 
-        # Use params from best performing iteration
-        best_params = best_iter_params
-
-        # Print hyperparameter distribution
-        if tuning_enabled and len(all_iter_params) > 0:
-            from collections import Counter
-
-            print(f"\n  Hyperparameter distribution across {n_iterations} iterations:")
-
-            # Count each unique parameter combination
-            for param_name in ["kernel", "C", "gamma"]:
-                if param_name in all_iter_params[0]:
-                    values = [p.get(param_name) for p in all_iter_params if param_name in p]
-                    if values:
-                        counts = Counter(values)
-                        total = len(values)
-                        print(f"    {param_name}:")
-                        for value, count in counts.most_common():
-                            pct = 100 * count / total
-                            print(f"      {value}: {count}/{total} ({pct:.1f}%)")
+        # Use tuned or default params
+        best_params = tuned_params if tuned_params is not None else model_cfg
 
         svm_calibrator = None
 
@@ -540,6 +567,7 @@ def run_single_fold(
     else:
         # Use default hyperparameters from config
         model_cfg = svm_config["model"].copy()
+        best_params = model_cfg
         svm_model = SVC(
             kernel=model_cfg.get("kernel", "linear"),
             C=model_cfg.get("C", 1.0),
@@ -716,24 +744,10 @@ def run_task_with_nested_cv(
     baseline_agg = aggregate_cv_predictions(baseline_folds)
     svm_agg = aggregate_cv_predictions(svm_folds)
 
-    # Global threshold sweep on aggregated predictions
-    threshold_candidates = get_threshold_candidates(svm_config)
-    global_threshold = None
-    global_threshold_metric = None
-    if threshold_candidates:
-        all_targets = np.concatenate([fold["y_test"] for fold in svm_folds])
-        all_scores = np.concatenate([fold["y_score"] for fold in svm_folds])
-        threshold_metric = svm_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
-        global_threshold, global_threshold_metric = find_best_threshold(
-            all_targets,
-            all_scores,
-            threshold_candidates,
-            default_threshold=svm_config.get("evaluation", {}).get("decision_threshold", 0.0),
-            metric=threshold_metric,
-            beta=float(svm_config.get("tuning", {}).get("fbeta_beta", 0.5)),
-        )
-        svm_agg["global_threshold"] = global_threshold
-        svm_agg["global_threshold_metric"] = global_threshold_metric
+    # NOTE: Global threshold sweep on aggregated test predictions was removed
+    # because it constitutes test-set leakage (optimizing threshold on the same
+    # data used to report performance). Per-fold validation-optimized thresholds
+    # are used instead.
 
     # Setup output directory
     data_dir = env.repo_root / "outputs" / env.configs.run["run_name"] / env.configs.run["run_id"] / f"seed_{seed}"
@@ -757,9 +771,6 @@ def run_task_with_nested_cv(
         f"  Balanced Accuracy: {svm_agg['per_fold']['balanced_accuracy_mean']:.3f} ± {svm_agg['per_fold']['balanced_accuracy_std']:.3f}"
     )
     print(f"  ROC-AUC: {svm_agg['per_fold']['roc_auc_mean']:.3f} ± {svm_agg['per_fold']['roc_auc_std']:.3f}")
-    if global_threshold is not None:
-        threshold_metric_name = svm_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
-        print(f"  Global threshold ({threshold_metric_name}): {global_threshold:.3f} → {global_threshold_metric:.3f}")
     print(f"{'='*60}\n")
 
     if not sweep_mode:
@@ -791,7 +802,6 @@ def run_task_with_nested_cv(
             "svm": svm_agg,
             "baseline_folds": baseline_folds,
             "svm_folds": svm_folds,
-            "global_threshold": global_threshold,
         }
         with open(svm_dir / "results.pkl", "wb") as f:
             pickle.dump(results, f)
@@ -814,7 +824,6 @@ def run_task_with_nested_cv(
     return {
         "baseline": baseline_agg,
         "svm": svm_agg,
-        "global_threshold": global_threshold,
     }
 
 
@@ -844,20 +853,61 @@ def compute_feature_importance(env, full_df, task_config, svm_folds, seed):
     plots_dir = svm_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use last fold as representative (could also aggregate across folds)
-    last_fold = svm_folds[-1]
-    X_test_pca = last_fold["X_test_pca"]
-    y_test = last_fold["y_test"]
-    model = last_fold["model"]
-    pipeline = last_fold["pipeline"]
+    from ..tsne.embeddings import get_imaging_columns, get_roi_columns_from_config
 
-    n_components = pipeline["n_components"]
-    pca_features = [f"PC{i+1}" for i in range(n_components)]
+    # Get imaging columns (respecting ROI mode)
+    roi_columns = None
+    if svm_config.get("feature_mode") == "roi":
+        roi_networks = svm_config.get("roi_networks", [])
+        if roi_networks:
+            roi_columns = get_roi_columns_from_config(env.configs.data, roi_networks)
 
-    print(f"\nComputing feature importance for {task_name}...")
+    # Use first fold's pipeline for feature name resolution
+    first_pipeline = svm_folds[0]["pipeline"]
+    all_imaging_cols = get_imaging_columns(df_filtered, svm_config["imaging_prefixes"], roi_columns)
+    valid_features = first_pipeline["valid_features"]
+    imaging_cols = [col for i, col in enumerate(all_imaging_cols) if valid_features[i]]
 
-    # Permutation importance
-    svm_importance = get_feature_importance_permutation(model, X_test_pca, y_test, pca_features, seed)
+    # Feature names depend on whether PCA was used
+    use_pca = first_pipeline["pca"] is not None
+    if use_pca:
+        n_components = first_pipeline["n_components"]
+        feature_names = [f"PC{i+1}" for i in range(n_components)]
+    else:
+        feature_names = imaging_cols
+
+    n_folds = len(svm_folds)
+    n_repeats = svm_config.get("interpretation", {}).get("n_repeats", 3)
+    print(f"\nComputing feature importance across {n_folds} folds for {task_name}...")
+
+    # Aggregate permutation importance across ALL folds (not just last)
+    fold_importances = []
+    for fold_idx, fold in enumerate(svm_folds):
+        print(f"  Fold {fold_idx + 1}/{n_folds}...")
+        # Wrap ensemble (list of models) for permutation_importance compatibility
+        fold_model = fold["model"]
+        if isinstance(fold_model, list):
+            fold_model = EnsemblePredictor(fold_model)
+        result = permutation_importance(
+            fold_model,
+            fold["X_test_pca"],
+            fold["y_test"],
+            n_repeats=n_repeats,
+            random_state=seed + fold_idx,
+            n_jobs=-1,
+            scoring="balanced_accuracy",
+        )
+        fold_importances.append(result.importances_mean)
+
+    # Average importance across folds
+    avg_importance = np.mean(fold_importances, axis=0)
+    fold_std = np.std(fold_importances, axis=0)
+
+    svm_importance = pd.DataFrame({
+        "feature": feature_names,
+        "importance": avg_importance,
+        "importance_std": fold_std,
+    }).sort_values("importance", ascending=False).reset_index(drop=True)
 
     plot_feature_importance(
         svm_importance,
@@ -866,23 +916,21 @@ def compute_feature_importance(env, full_df, task_config, svm_folds, seed):
         top_n=svm_config.get("interpretation", {}).get("top_n_pcs", 10),
     )
 
-    # Map to brain regions
-    from ..tsne.embeddings import get_imaging_columns
+    # Map to brain regions (only meaningful with PCA)
+    if use_pca:
+        brain_regions = map_pca_to_brain_regions(
+            svm_importance,
+            first_pipeline["pca"],
+            imaging_cols,
+            top_n_components=svm_config.get("interpretation", {}).get("top_n_pcs", 10),
+            top_n_features=svm_config.get("interpretation", {}).get("top_n_features", 20),
+        )
+        brain_regions_enriched = enrich_brain_regions(brain_regions, env)
+    else:
+        # Without PCA, permutation importance is already on raw features
+        brain_regions_enriched = enrich_brain_regions(svm_importance, env)
 
-    all_imaging_cols = get_imaging_columns(df_filtered, svm_config["imaging_prefixes"])
-    valid_features = pipeline["valid_features"]
-    imaging_cols = [col for i, col in enumerate(all_imaging_cols) if valid_features[i]]
-
-    brain_regions = map_pca_to_brain_regions(
-        svm_importance,
-        pipeline["pca"],
-        imaging_cols,
-        top_n_components=svm_config.get("interpretation", {}).get("top_n_pcs", 10),
-        top_n_features=svm_config.get("interpretation", {}).get("top_n_features", 20),
-    )
-    brain_regions_enriched = enrich_brain_regions(brain_regions, env)
     brain_regions_enriched.to_csv(svm_dir / "brain_regions.csv", index=False)
-
     plot_feature_importance(
         brain_regions_enriched,
         f"Top Brain Regions - {task_name}",
@@ -907,6 +955,12 @@ def run_svm_pipeline(env, use_wandb: bool = False, sweep_mode: bool = False):
 
     full_df = load_full_dataset(env)
     print(f"Total samples: {len(full_df)}")
+
+    # Create extreme group labels if configured
+    extreme_cfg = env.configs.svm.get("extreme_groups", {})
+    if extreme_cfg.get("enabled"):
+        research_q = env.configs.run.get("run_name", "anxiety")
+        full_df = create_extreme_groups(full_df, extreme_cfg, research_q)
 
     tasks = env.configs.svm.get("tasks", [])
     all_results = {}

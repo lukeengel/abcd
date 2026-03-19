@@ -1,4 +1,13 @@
 use_pca: false
+feature_mode: "roi"
+
+roi_networks:
+  - salience
+  - dopamine
+  - cognitive
+  - limbic
+  - thalamic
+
 tuning:
   enabled: false
   cv_folds: 3
@@ -33,18 +42,18 @@ baseline:
   penalty: l2
   C: 0.1
 model:
-  hidden_layer_sizes: [256, 128, 64]
-  activation: tanh
-  alpha: 0.0001
+  hidden_layer_sizes: [128, 64]
+  activation: relu
+  alpha: 0.001
   learning_rate: adaptive
   solver: adam
-  max_iter: 5000
-  early_stopping: false
-  validation_fraction: 0.1
-  n_iter_no_change: 10
+  max_iter: 3000
+  early_stopping: true
+  validation_fraction: 0.15
+  n_iter_no_change: 30
   random_state: null
-  learning_rate_init: 0.001
-  tol: 0.0001
+  learning_rate_init: 0.0005
+  tol: 0.00001
   batch_size: 32
   beta_1: 0.9
   beta_2: 0.999
@@ -63,8 +72,12 @@ tasks:
 - name: clinical_vs_subclinical
   positive_class: Clinical
   negative_class: Subclinical
+- name: extreme_high_vs_low
+  positive_class: High
+  negative_class: Low
+  use_extreme_groups: true
 downsampling:
-  enabled: true
+  enabled: false
   n_iterations: 100
 evaluation:
   bootstrap:
@@ -101,3 +114,11 @@ imaging_prefixes:
 - smri_vol_cdk
 - smri_vol_scs
 - mrisdp
+
+# Extreme groups for anxiety (same as SVM)
+extreme_groups:
+  enabled: true
+  anxiety:
+    column: cbcl_scr_dsm5_anxdisord_r
+    high_min: 5
+    low_max: 0

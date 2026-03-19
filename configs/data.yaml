@@ -2,9 +2,11 @@ files:
   metadata:
     - data/raw/abcd_p_demo.csv
     - data/raw/mh_p_cbcl.csv
+    - data/raw/mh_y_pps.csv
     - data/raw/mri_y_adm_info.csv
     - data/raw/mri_y_qc_auto_post.csv
     - data/raw/RVI_groups.csv
+    - data/raw/abcd_y_lt.csv
   data_dictionary: data/raw/Data Dictionary.csv
   imaging:
     - data/raw/mri_y_dti_fa_is_at.csv
@@ -31,6 +33,7 @@ columns:
     t_score: cbcl_scr_dsm5_anxdisord_t
     research_group: anx_group  # Automatically set by config.py based on run_name
     scanner_manufacturer: mri_info_manufacturer
+    scanner_model: mri_info_manufacturersmn
     scanner_serial: mri_info_deviceserialnumber
     qc: apqc_smri_topo_ndefect
   metadata:
@@ -38,6 +41,7 @@ columns:
     - eventname
     - demo_sex_v2
     - demo_brthdat_v2
+    - demo_brthdat_v2_l           # Longitudinal age (available at all timepoints)
     - cbcl_scr_dsm5_anxdisord_t
     - cbcl_scr_syn_anxdep_r      # Anxious/Depressed raw score
     - cbcl_scr_syn_anxdep_t      # Anxious/Depressed t-score
@@ -48,8 +52,15 @@ columns:
     - cbcl_scr_dsm5_anxdisord_r  # Anxiety Problems raw score
     - cbcl_scr_dsm5_anxdisord_t  # Anxiety Problems t-score (duplicate but OK)
     - mri_info_manufacturer
+    - mri_info_manufacturersmn
     - mri_info_deviceserialnumber
     - apqc_smri_topo_ndefect
+    # PPS (Prodromal Psychosis Scale) for psychosis regression
+    - pps_y_ss_number
+    - pps_y_ss_severity_score
+    - pps_y_ss_bother_sum
+    # Family/sibling grouping (from abcd_y_lt.csv)
+    - rel_family_id
     # group_last_final automatically added for psychosis runs by config.py
   derived:
     - sex_mapped
@@ -95,8 +106,10 @@ derived:
     map:
       1: male
       2: female
+      3: intersex_other
       "1": male
       "2": female
+      "3": intersex_other
   anxiety:
     source: t_score
     output: anx_group
@@ -133,8 +146,7 @@ missing:
   require_complete_metadata:
     - age
     - t_score
-    - scanner_manufacturer
-    - scanner_serial
+    - scanner_model  # mri_info_manufacturersmn - 8 scanner models
     - research_group  # Will use anx_group or psych_group based on mapping above
   require_complete_families:
     - dti
@@ -143,4 +155,172 @@ splits:
   train: 0.8
   val: 0.1
   test: 0.1
-  stratify: research_group  # Will use the configured research question grouping
+  stratify: research_group
+
+# Curated ROI features (theory-driven)
+roi_features:
+  enabled: true
+
+  salience:  # Insula, dACC, NAcc
+    structural:
+      - smri_vol_cdk_insulalh
+      - smri_vol_cdk_insularh
+      - smri_thick_cdk_insulalh
+      - smri_thick_cdk_insularh
+      - smri_thick_cdk_cdacatelh
+      - smri_thick_cdk_cdacaterh
+      - smri_vol_cdk_cdacatelh
+      - smri_vol_cdk_cdacaterh
+      - smri_vol_scs_aal
+      - smri_vol_scs_aar
+    connectivity:
+      - dmri_dtifa_fiberat_ifolh
+      - dmri_dtifa_fiberat_iforh
+      - dmri_dtimd_fiberat_ifolh
+      - dmri_dtimd_fiberat_iforh
+
+  dopamine:  # Striatum, VTA, NAcc + corticostriate connectivity
+    structural:
+      - smri_vol_scs_caudatelh
+      - smri_vol_scs_caudaterh
+      - smri_vol_scs_putamenlh
+      - smri_vol_scs_putamenrh
+      - smri_vol_scs_pallidumlh
+      - smri_vol_scs_pallidumrh
+      - smri_vol_scs_vedclh
+      - smri_vol_scs_vedcrh
+      - smri_vol_scs_aal
+      - smri_vol_scs_aar
+    connectivity:
+      # Superior corticostriate tract (direct cortex-striatum pathway)
+      - dmri_dtifa_fiberat_scslh
+      - dmri_dtifa_fiberat_scsrh
+      - dmri_dtimd_fiberat_scslh
+      - dmri_dtimd_fiberat_scsrh
+
+  dopamine_core:
+    structural:
+      # Dorsal striatum
+      - smri_vol_scs_caudatelh
+      - smri_vol_scs_caudaterh
+      - smri_vol_scs_putamenlh
+      - smri_vol_scs_putamenrh
+      # Basal ganglia
+      - smri_vol_scs_pallidumlh
+      - smri_vol_scs_pallidumrh
+      # Ventral diencephalon / VTA
+      - smri_vol_scs_vedclh
+      - smri_vol_scs_vedcrh
+      # Ventral striatum
+      - smri_vol_scs_aal
+      - smri_vol_scs_aar
+      # Thalamus
+      - smri_vol_scs_tplh
+      - smri_vol_scs_tprh
+    connectivity:
+      # Superior corticostriate tract MD
+      - dmri_dtimd_fiberat_scslh
+      - dmri_dtimd_fiberat_scsrh
+
+  dopamine_extended:  # Core dopamine + Okada/ENIGMA psychosis-relevant structures
+    structural:
+      # --- Core dopamine circuit ---
+      # Dorsal striatum
+      - smri_vol_scs_caudatelh
+      - smri_vol_scs_caudaterh
+      - smri_vol_scs_putamenlh
+      - smri_vol_scs_putamenrh
+      # Basal ganglia output
+      - smri_vol_scs_pallidumlh
+      - smri_vol_scs_pallidumrh
+      # Ventral diencephalon / VTA
+      - smri_vol_scs_vedclh
+      - smri_vol_scs_vedcrh
+      # Ventral striatum
+      - smri_vol_scs_aal
+      - smri_vol_scs_aar
+      # Thalamus
+      - smri_vol_scs_tplh
+      - smri_vol_scs_tprh
+      # --- ENIGMA additions ---
+      # Lateral ventricles (Okada 2016: rightward asymmetry in SZ; ENIGMA 2023)
+      - smri_vol_scs_ltventriclelh
+      - smri_vol_scs_ltventriclerh
+      # Hippocampus (Okada 2016: leftward asymmetry in both groups)
+      - smri_vol_scs_hpuslh
+      - smri_vol_scs_hpusrh
+      # Amygdala (Okada 2016: leftward asymmetry preserved in SZ)
+      - smri_vol_scs_amygdalalh
+      - smri_vol_scs_amygdalarh
+    connectivity:
+      # Superior corticostriate tract MD
+      - dmri_dtimd_fiberat_scslh
+      - dmri_dtimd_fiberat_scsrh
+
+  cognitive:  # DLPFC, ACC
+    structural:
+      - smri_vol_cdk_cdmdfrlh
+      - smri_vol_cdk_cdmdfrrh
+      - smri_thick_cdk_cdmdfrlh
+      - smri_thick_cdk_cdmdfrrh
+      - smri_vol_cdk_rrmdfrlh
+      - smri_vol_cdk_rrmdfrrh
+      - smri_thick_cdk_rrmdfrlh
+      - smri_thick_cdk_rrmdfrrh
+      - smri_vol_cdk_sufrlh
+      - smri_vol_cdk_sufrrh
+      - smri_thick_cdk_sufrlh
+      - smri_thick_cdk_sufrrh
+      - smri_thick_cdk_rracatelh
+      - smri_thick_cdk_rracaterh
+      - smri_vol_cdk_rracatelh
+      - smri_vol_cdk_rracaterh
+    connectivity:
+      - dmri_dtifa_fiberat_slflh
+      - dmri_dtifa_fiberat_slfrh
+      - dmri_dtimd_fiberat_slflh
+      - dmri_dtimd_fiberat_slfrh
+      - dmri_dtifa_fiberat_cgclh
+      - dmri_dtifa_fiberat_cgcrh
+      - dmri_dtimd_fiberat_cgclh
+      - dmri_dtimd_fiberat_cgcrh
+
+  limbic:  # Hippocampus, amygdala, fornix
+    structural:
+      - smri_vol_scs_hpuslh
+      - smri_vol_scs_hpusrh
+      - smri_vol_scs_amygdalalh
+      - smri_vol_scs_amygdalarh
+      - smri_vol_cdk_parahpallh
+      - smri_vol_cdk_parahpalrh
+      - smri_thick_cdk_parahpallh
+      - smri_thick_cdk_parahpalrh
+      - smri_vol_cdk_ehinallh
+      - smri_vol_cdk_ehinalrh
+      - smri_thick_cdk_ehinallh
+      - smri_thick_cdk_ehinalrh
+    connectivity:
+      - dmri_dtifa_fiberat_fxlh
+      - dmri_dtifa_fiberat_fxrh
+      - dmri_dtimd_fiberat_fxlh
+      - dmri_dtimd_fiberat_fxrh
+      - dmri_dtifa_fiberat_cghlh
+      - dmri_dtifa_fiberat_cghrh
+      - dmri_dtimd_fiberat_cghlh
+      - dmri_dtimd_fiberat_cghrh
+      - dmri_dtifa_fiberat_unclh
+      - dmri_dtifa_fiberat_uncrh
+      - dmri_dtimd_fiberat_unclh
+      - dmri_dtimd_fiberat_uncrh
+
+  thalamic:  # Thalamus, ATR
+    structural:
+      - smri_vol_scs_tplh
+      - smri_vol_scs_tprh
+    connectivity:
+      - dmri_dtifa_fiberat_atrlh
+      - dmri_dtifa_fiberat_atrrh
+      - dmri_dtimd_fiberat_atrlh
+      - dmri_dtimd_fiberat_atrrh
+      - dmri_dtifa_fiberat_fmin
+      - dmri_dtimd_fiberat_fmin

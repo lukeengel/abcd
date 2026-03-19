@@ -49,6 +49,9 @@ def load_full_dataset(env) -> pd.DataFrame:
 
 def filter_task_data(df: pd.DataFrame, task_config: dict, group_col: str) -> tuple[pd.DataFrame, np.ndarray]:
     """Filter data for specific classification task."""
+    if task_config.get("use_extreme_groups"):
+        group_col = "extreme_group"
+
     pos_classes = task_config.get("positive_classes") or [task_config.get("positive_class")]
     neg_class = task_config["negative_class"]
 
@@ -60,13 +63,19 @@ def filter_task_data(df: pd.DataFrame, task_config: dict, group_col: str) -> tup
 
 
 def extract_mlp_harmonization_data(df: pd.DataFrame, env):
-    """Extract imaging features and covariates for harmonization (same as RF)."""
+    """Extract imaging features and covariates for harmonization."""
     mlp_config = env.configs.mlp
     harm_config = env.configs.harmonize
 
-    from ..tsne.embeddings import get_imaging_columns
+    from ..tsne.embeddings import get_imaging_columns, get_roi_columns_from_config
 
-    imaging_cols = get_imaging_columns(df, mlp_config["imaging_prefixes"])
+    roi_columns = None
+    if mlp_config.get("feature_mode") == "roi":
+        roi_networks = mlp_config.get("roi_networks", [])
+        if roi_networks:
+            roi_columns = get_roi_columns_from_config(env.configs.data, roi_networks)
+
+    imaging_cols = get_imaging_columns(df, mlp_config["imaging_prefixes"], roi_columns)
     X = df[imaging_cols].values
 
     site_col = harm_config["site_column"]
@@ -74,11 +83,30 @@ def extract_mlp_harmonization_data(df: pd.DataFrame, env):
     covars = df[covariate_cols].copy()
     covars = covars.rename(columns={site_col: "SITE"})
 
+    # Encode string covariates as numeric (neuroHarmonize requires numeric input)
+    for col in list(covars.columns):
+        if col == "SITE":
+            continue
+        if not pd.api.types.is_numeric_dtype(covars[col]):
+            covars[col] = pd.Categorical(covars[col]).codes
+    # Drop constant covariates (e.g. sex when data is sex-stratified)
+    for col in list(covars.columns):
+        if col == "SITE":
+            continue
+        if covars[col].nunique() <= 1:
+            covars = covars.drop(columns=col)
+
     return X, covars
 
 
-def fit_raw_features_on_train(train_df: pd.DataFrame, env, seed: int) -> dict:
-    """Fit harmonization + scaling pipeline on train set (same as RF/SVM)."""
+def fit_raw_features_on_train(train_df: pd.DataFrame, env, seed: int) -> tuple[dict, np.ndarray]:
+    """Fit harmonization + scaling pipeline on train set.
+
+    Returns:
+        (pipeline_dict, X_train_scaled) — use X_train_scaled directly for
+        training to avoid ComBat double-application (harmonizationLearn output
+        may differ slightly from harmonizationApply on the same data).
+    """
     harm_config = env.configs.harmonize
 
     X, covars = extract_mlp_harmonization_data(train_df, env)
@@ -97,12 +125,13 @@ def fit_raw_features_on_train(train_df: pd.DataFrame, env, seed: int) -> dict:
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_harm)
 
-    return {
+    pipeline = {
         "combat_model": combat_model,
         "scaler": scaler,
         "valid_features": valid_features,
         "n_features": X_scaled.shape[1],
     }
+    return pipeline, X_scaled
 
 
 def apply_raw_features_to_fold(fold_df: pd.DataFrame, fitted_pipeline: dict, env) -> np.ndarray:
@@ -114,7 +143,57 @@ def apply_raw_features_to_fold(fold_df: pd.DataFrame, fitted_pipeline: dict, env
     X_fold = X_fold[:, fitted_pipeline["valid_features"]]
 
     # Apply harmonization
-    X_harm = harmonizationApply(X_fold, fold_covars, fitted_pipeline["combat_model"])
+    if fitted_pipeline["combat_model"] is not None:
+        combat_model = fitted_pipeline["combat_model"]
+        n_orig = len(fold_covars)
+
+        # neuroCombat's make_design_matrix builds one-hot site columns using
+        # np.unique() on the test fold's SITE values — it does NOT use the
+        # stored model['SITE_labels'] to determine column count. If a training
+        # site is absent from this test fold (can happen with small sex-specific
+        # subsets), the one-hot matrix has fewer columns than B_hat expects,
+        # causing a ValueError on the np.dot(design, B_hat) call.
+        #
+        # Fix: temporarily pad one dummy row per missing training site so that
+        # np.unique() sees all K site codes → correct design matrix shape.
+        # Strip the dummy rows after harmonizationApply.
+        #
+        # This preserves per-fold ComBat entirely. harmonizationApply applies
+        # stored per-site parameters (gamma_star, delta_star) independently to
+        # each subject — adding dummy rows does not affect harmonization of the
+        # real test subjects.
+        if "SITE" in fold_covars.columns:
+            training_sites = list(combat_model.get("SITE_labels", []))
+            present_sites = set(fold_covars["SITE"].unique())
+            missing_sites = [s for s in training_sites if s not in present_sites]
+
+            if missing_sites:
+                dummy_covars = pd.concat(
+                    [fold_covars.iloc[0:1].assign(SITE=s) for s in missing_sites],
+                    ignore_index=True,
+                )
+                dummy_X = np.tile(X_fold[0:1], (len(missing_sites), 1))
+                fold_covars = pd.concat([fold_covars, dummy_covars], ignore_index=True)
+                X_fold_for_harm = np.vstack([X_fold, dummy_X])
+            else:
+                X_fold_for_harm = X_fold
+        else:
+            X_fold_for_harm = X_fold
+
+        try:
+            X_harm_aug = harmonizationApply(X_fold_for_harm, fold_covars, combat_model)
+            X_harm = X_harm_aug[:n_orig]  # strip dummy rows
+        except Exception as _combat_err:
+            import warnings
+            warnings.warn(
+                f"ComBat harmonizationApply failed ({type(_combat_err).__name__}: {_combat_err}). "
+                "Falling back to unharmonized features for this fold.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            X_harm = X_fold
+    else:
+        X_harm = X_fold
 
     # Apply scaling
     X_scaled = fitted_pipeline["scaler"].transform(X_harm)
@@ -396,8 +475,7 @@ def run_single_fold(
         X_test_pca, _ = apply_pca_to_fold(test_df, test_df, fitted_pipeline, env)
     else:
         # Use raw features with harmonization + scaling (same as RF/SVM)
-        fitted_pipeline = fit_raw_features_on_train(train_df, env, seed + fold_idx)
-        X_train_pca = apply_raw_features_to_fold(train_df, fitted_pipeline, env)
+        fitted_pipeline, X_train_pca = fit_raw_features_on_train(train_df, env, seed + fold_idx)
         X_test_pca = apply_raw_features_to_fold(test_df, fitted_pipeline, env)
 
     # Train baseline (Logistic Regression with class_weight='balanced')
@@ -639,6 +717,7 @@ def run_single_fold(
     else:
         # Use default hyperparameters from config
         model_cfg = mlp_config["model"].copy()
+        best_params = model_cfg.copy()
 
         # Convert hidden_layer_sizes from list to tuple (YAML parses as list)
         hidden_layers = model_cfg.get("hidden_layer_sizes", (128, 64))
@@ -844,24 +923,10 @@ def run_task_with_nested_cv(
     baseline_agg = aggregate_cv_predictions(baseline_folds)
     mlp_agg = aggregate_cv_predictions(mlp_folds)
 
-    # Global threshold sweep on aggregated predictions
-    threshold_candidates = get_threshold_candidates(mlp_config)
-    global_threshold = None
-    global_threshold_metric = None
-    if threshold_candidates:
-        all_targets = np.concatenate([fold["y_test"] for fold in mlp_folds])
-        all_scores = np.concatenate([fold["y_score"] for fold in mlp_folds])
-        threshold_metric = mlp_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
-        global_threshold, global_threshold_metric = find_best_threshold(
-            all_targets,
-            all_scores,
-            threshold_candidates,
-            default_threshold=mlp_config.get("evaluation", {}).get("decision_threshold", 0.0),
-            metric=threshold_metric,
-            beta=float(mlp_config.get("tuning", {}).get("fbeta_beta", 0.5)),
-        )
-        mlp_agg["global_threshold"] = global_threshold
-        mlp_agg["global_threshold_metric"] = global_threshold_metric
+    # NOTE: Global threshold sweep on aggregated test predictions was removed
+    # because it constitutes test-set leakage (optimizing threshold on the same
+    # data used to report performance). Per-fold validation-optimized thresholds
+    # are used instead.
 
     # Setup output directory
     data_dir = env.repo_root / "outputs" / env.configs.run["run_name"] / env.configs.run["run_id"] / f"seed_{seed}"
@@ -885,11 +950,6 @@ def run_task_with_nested_cv(
         f"  Balanced Accuracy: {mlp_agg['per_fold']['balanced_accuracy_mean']:.3f} ± {mlp_agg['per_fold']['balanced_accuracy_std']:.3f}"
     )
     logger.info(f"  ROC-AUC: {mlp_agg['per_fold']['roc_auc_mean']:.3f} ± {mlp_agg['per_fold']['roc_auc_std']:.3f}")
-    if global_threshold is not None:
-        threshold_metric_name = mlp_config.get("evaluation", {}).get("threshold_metric", "balanced_accuracy")
-        logger.info(
-            f"  Global threshold ({threshold_metric_name}): {global_threshold:.3f} → {global_threshold_metric:.3f}"
-        )
     logger.info(f"{'='*60}\n")
 
     if not sweep_mode:
@@ -921,7 +981,6 @@ def run_task_with_nested_cv(
             "mlp": mlp_agg,
             "baseline_folds": baseline_folds,
             "mlp_folds": mlp_folds,
-            "global_threshold": global_threshold,
         }
         with open(mlp_dir / "results.pkl", "wb") as f:
             pickle.dump(results, f)
@@ -944,7 +1003,6 @@ def run_task_with_nested_cv(
     return {
         "baseline": baseline_agg,
         "mlp": mlp_agg,
-        "global_threshold": global_threshold,
     }
 
 
@@ -999,9 +1057,15 @@ def compute_feature_importance(env, full_df, task_config, mlp_folds, seed):
         )
 
         # Map to brain regions
-        from ..tsne.embeddings import get_imaging_columns
+        from ..tsne.embeddings import get_imaging_columns, get_roi_columns_from_config
 
-        all_imaging_cols = get_imaging_columns(df_filtered, mlp_config["imaging_prefixes"])
+        roi_columns = None
+        if mlp_config.get("feature_mode") == "roi":
+            roi_networks = mlp_config.get("roi_networks", [])
+            if roi_networks:
+                roi_columns = get_roi_columns_from_config(env.configs.data, roi_networks)
+
+        all_imaging_cols = get_imaging_columns(df_filtered, mlp_config["imaging_prefixes"], roi_columns)
         valid_features = pipeline["valid_features"]
         imaging_cols = [col for i, col in enumerate(all_imaging_cols) if valid_features[i]]
 
@@ -1035,6 +1099,8 @@ def compute_feature_importance(env, full_df, task_config, mlp_folds, seed):
 
 def run_mlp_pipeline(env, use_wandb: bool = False, sweep_mode: bool = False):
     """Run complete MLP pipeline with nested CV (no fixed holdout test set)."""
+    from ..svm.pipeline import create_extreme_groups
+
     logger.info("=" * 60)
     logger.info("MLP Pipeline with Nested Cross-Validation")
     logger.info("=" * 60)
@@ -1042,6 +1108,12 @@ def run_mlp_pipeline(env, use_wandb: bool = False, sweep_mode: bool = False):
 
     full_df = load_full_dataset(env)
     logger.info(f"Total samples: {len(full_df)}")
+
+    # Create extreme group labels if configured
+    extreme_cfg = env.configs.mlp.get("extreme_groups", {})
+    if extreme_cfg.get("enabled"):
+        research_q = env.configs.run.get("run_name", "anxiety")
+        full_df = create_extreme_groups(full_df, extreme_cfg, research_q)
 
     tasks = env.configs.mlp.get("tasks", [])
     all_results = {}

@@ -29,6 +29,16 @@ colors:
     Subclinical: "#FF8C00"
     Clinical: "#DC143C"
   scanner:
+    # Scanner models (mri_info_manufacturersmn)
+    Prisma_fit: "#E94B3C"
+    Prisma: "#FF6B6B"
+    "DISCOVERY MR750": "#50E3C2"
+    "Achieva dStream": "#BD10E0"
+    Ingenia: "#9B59B6"
+    "SIGNA Premier": "#3498DB"
+    "SIGNA UHP": "#1ABC9C"
+    "Orchestra SDK": "#F39C12"
+    # Fallback for manufacturer names
     SIEMENS: "#E94B3C"
     "GE MEDICAL SYSTEMS": "#50E3C2"
     "Philips Medical Systems": "#BD10E0"
@@ -36,8 +46,8 @@ colors:
     9: "#9013FE"
     10: "#FF6D00"
   sex:
-    Male: "#2196F3"
-    Female: "#E91E63"
+    male: "#2196F3"
+    female: "#E91E63"
     Unknown: "#999999"
 
 # Plot styling

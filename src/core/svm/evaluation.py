@@ -25,17 +25,18 @@ def get_cv_splitter(config: dict, seed: int) -> StratifiedKFold:
 
 
 def compute_metrics(y_true, y_pred, y_score=None) -> dict:
-    """Compute comprehensive classification metrics."""
+    """Compute classification metrics for the positive class (label=1)."""
+    # Use binary average for positive class metrics (not weighted)
     precision, recall, f1, _ = precision_recall_fscore_support(
-        y_true, y_pred, average="weighted", zero_division=0
+        y_true, y_pred, average="binary", pos_label=1, zero_division=0
     )
 
     metrics = {
         "accuracy": accuracy_score(y_true, y_pred),
         "balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
+        "precision_pos": precision,
+        "recall_pos": recall,
+        "f1_pos": f1,
     }
 
     # Add ROC-AUC using decision scores or probabilities
@@ -139,13 +140,16 @@ def aggregate_cv_predictions(fold_results: list) -> dict:
     }
 
 
-def bootstrap_test_metrics(model, X_test, y_test, n_iterations=1000, seed=42):
-    """Compute bootstrap confidence intervals for test metrics (optimized).
+def bootstrap_test_metrics(y_test, y_pred, y_score=None, n_iterations=1000, seed=42):
+    """Compute bootstrap confidence intervals for test metrics.
+
+    Uses pre-computed predictions to ensure CIs match the reported metrics
+    (same threshold and operating point).
 
     Args:
-        model: Trained model or list of models (for ensemble)
-        X_test: Test features
-        y_test: Test labels
+        y_test: True test labels
+        y_pred: Pre-computed predictions (at the threshold used for reporting)
+        y_score: Pre-computed scores (probabilities or decision function values)
         n_iterations: Number of bootstrap iterations (default 1000)
         seed: Random seed
 
@@ -155,41 +159,15 @@ def bootstrap_test_metrics(model, X_test, y_test, n_iterations=1000, seed=42):
     rng = np.random.RandomState(seed)
     n_samples = len(y_test)
 
-    # Check if model is an ensemble (list of models)
-    is_ensemble = isinstance(model, list)
-
-    # Pre-compute all predictions once (saves time)
-    if is_ensemble:
-        # Ensemble: average predictions across all models
-        all_preds = np.array([m.predict(X_test) for m in model])
-        y_pred_all = (all_preds.mean(axis=0) >= 0.5).astype(int)
-
-        # Get scores from ensemble
-        if hasattr(model[0], "decision_function"):
-            all_scores = np.array([m.decision_function(X_test) for m in model])
-            y_score_all = all_scores.mean(axis=0)
-        elif hasattr(model[0], "predict_proba"):
-            all_probas = np.array([m.predict_proba(X_test)[:, 1] for m in model])
-            y_score_all = all_probas.mean(axis=0)
-        else:
-            y_score_all = None
-    else:
-        # Single model
-        y_pred_all = model.predict(X_test)
-
-        # Get probability scores (works for both SVM and Random Forest)
-        if hasattr(model, "decision_function"):
-            y_score_all = model.decision_function(X_test)
-        elif hasattr(model, "predict_proba"):
-            y_score_all = model.predict_proba(X_test)[
-                :, 1
-            ]  # Positive class probability
-        else:
-            y_score_all = None
+    y_pred_all = y_pred
+    y_score_all = y_score
 
     metrics_bootstrap = {
         "accuracy": np.zeros(n_iterations),
         "balanced_accuracy": np.zeros(n_iterations),
+        "precision_pos": np.zeros(n_iterations),
+        "recall_pos": np.zeros(n_iterations),
+        "f1_pos": np.zeros(n_iterations),
         "roc_auc": np.zeros(n_iterations) if y_score_all is not None else None,
     }
 
@@ -205,6 +183,13 @@ def bootstrap_test_metrics(model, X_test, y_test, n_iterations=1000, seed=42):
         metrics_bootstrap["balanced_accuracy"][i] = balanced_accuracy_score(
             y_boot, y_pred_boot
         )
+        # Positive class metrics
+        prec, rec, f1, _ = precision_recall_fscore_support(
+            y_boot, y_pred_boot, average="binary", pos_label=1, zero_division=0
+        )
+        metrics_bootstrap["precision_pos"][i] = prec
+        metrics_bootstrap["recall_pos"][i] = rec
+        metrics_bootstrap["f1_pos"][i] = f1
         if y_score_all is not None:
             metrics_bootstrap["roc_auc"][i] = roc_auc_score(
                 y_boot, y_score_all[indices]

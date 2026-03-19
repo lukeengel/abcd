@@ -1,4 +1,13 @@
 use_pca: false
+#feature_mode: "roi"
+
+#roi_networks:
+  #- salience
+  #- dopamine
+  #- cognitive
+  #- limbic
+  #- thalamic
+
 tuning:
   enabled: false
   cv_folds: 3

@@ -6,7 +6,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 from neuroHarmonize import harmonizationLearn, harmonizationApply
 
-from ..tsne.embeddings import get_imaging_columns
+from ..tsne.embeddings import get_imaging_columns, get_roi_columns_from_config
 
 
 # Fit PCA once on full dev set (not per-fold) to avoid "mixing apples and pears"
@@ -32,6 +32,18 @@ def fit_pca_on_dev(dev_df: pd.DataFrame, env, seed: int) -> dict:
     # Scaling
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_harm)
+
+    # Skip PCA if disabled in config
+    svm_config = env.configs.svm
+    if not svm_config.get("use_pca", True):
+        return {
+            "combat_model": combat_model,
+            "scaler": scaler,
+            "pca": None,
+            "valid_features": valid_features,
+            "n_components": X_scaled.shape[1],
+            "variance_explained": 1.0,
+        }
 
     # PCA configuration
     n_components_config = pca_config.get("n_components", 0.90)
@@ -88,9 +100,13 @@ def apply_pca_to_fold(
     X_train_scaled = fitted_pipeline["scaler"].transform(X_train_harm)
     X_val_scaled = fitted_pipeline["scaler"].transform(X_val_harm)
 
-    # Apply PCA
-    X_train_pca = fitted_pipeline["pca"].transform(X_train_scaled)
-    X_val_pca = fitted_pipeline["pca"].transform(X_val_scaled)
+    # Apply PCA (skip if disabled)
+    if fitted_pipeline["pca"] is not None:
+        X_train_pca = fitted_pipeline["pca"].transform(X_train_scaled)
+        X_val_pca = fitted_pipeline["pca"].transform(X_val_scaled)
+    else:
+        X_train_pca = X_train_scaled
+        X_val_pca = X_val_scaled
 
     return X_train_pca, X_val_pca
 
@@ -102,13 +118,36 @@ def extract_harmonization_data(
     svm_config = env.configs.svm
     harm_config = env.configs.harmonize
 
-    imaging_cols = get_imaging_columns(df, svm_config["imaging_prefixes"])
+    # ROI feature selection (same pattern as MLP/regression)
+    roi_columns = None
+    if svm_config.get("feature_mode") == "roi":
+        roi_networks = svm_config.get("roi_networks", [])
+        if roi_networks:
+            roi_columns = get_roi_columns_from_config(env.configs.data, roi_networks)
+
+    imaging_cols = get_imaging_columns(df, svm_config["imaging_prefixes"], roi_columns)
     X = df[imaging_cols].values
 
     site_col = harm_config["site_column"]
     covariate_cols = [site_col] + harm_config.get("covariates", [])
     covars = df[covariate_cols].copy()
     covars = covars.rename(columns={site_col: "SITE"})
+
+    # Encode string covariates as float64 (neuroHarmonize requires numeric input;
+    # int8 from pd.Categorical can cause OLS failures in some neuroHarmonize versions)
+    for col in list(covars.columns):
+        if col == "SITE":
+            continue
+        if not pd.api.types.is_numeric_dtype(covars[col]):
+            covars[col] = pd.Categorical(covars[col]).codes.astype(float)
+        else:
+            covars[col] = covars[col].astype(float)
+    # Drop constant covariates (e.g. sex when data is sex-stratified)
+    for col in list(covars.columns):
+        if col == "SITE":
+            continue
+        if covars[col].nunique() <= 1:
+            covars = covars.drop(columns=col)
 
     return X, covars
 
@@ -149,7 +188,19 @@ def preprocess_fold(
     X_train_scaled = scaler.fit_transform(X_train_harm)
     X_val_scaled = scaler.transform(X_val_harm)
 
-    # PCA
+    # PCA (skip if disabled)
+    svm_config = env.configs.svm
+    if not svm_config.get("use_pca", True):
+        pipeline = {
+            "combat_model": combat_model,
+            "scaler": scaler,
+            "pca": None,
+            "valid_features": valid_features,
+            "n_components": X_train_scaled.shape[1],
+            "variance_explained": 1.0,
+        }
+        return X_train_scaled, X_val_scaled, pipeline
+
     pca = PCA(
         n_components=pca_config.get("n_components", 0.90),
         whiten=pca_config.get("whiten", False),

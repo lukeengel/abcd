@@ -11,9 +11,22 @@ from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
 
 
-def get_imaging_columns(df: pd.DataFrame, prefixes: list[str]) -> list[str]:
-    """Get imaging column names based on prefixes."""
+def get_imaging_columns(df: pd.DataFrame, prefixes: list[str], roi_columns: list[str] | None = None) -> list[str]:
+    """Get imaging columns by prefix or explicit ROI list."""
+    if roi_columns is not None:
+        return [col for col in roi_columns if col in df.columns]
     return [col for col in df.columns if any(col.startswith(p) for p in prefixes)]
+
+
+def get_roi_columns_from_config(data_config: dict, roi_networks: list[str]) -> list[str]:
+    """Extract ROI columns from data.yaml for specified networks."""
+    roi_features = data_config.get("roi_features", {})
+    columns = []
+    for network in roi_networks:
+        cfg = roi_features.get(network, {})
+        columns.extend(cfg.get("structural") or [])
+        columns.extend(cfg.get("connectivity") or [])
+    return list(dict.fromkeys(columns))
 
 
 def load_or_compute_tsne(X: np.ndarray, name: str, embeddings_dir: Path, tsne_config: dict, seed: int) -> np.ndarray:
@@ -52,20 +65,19 @@ def prepare_metadata(baseline_preqc: pd.DataFrame, all_orig: pd.DataFrame, env) 
 
     # get column mappings from config
     col_map = env.configs.data["columns"]["mapping"]
-    qc_cols = env.configs.data["columns"]["qc"]
+    qc_col = col_map.get("qc", "apqc_smri_topo_ndefect")
     metadata_cols = env.configs.data["columns"]["metadata"]
-    sex_map = env.configs.data["derived_variables"]["sex"]["map"]
+    sex_map = env.configs.data["derived"]["sex"]["map"]
 
     def extract_metadata(df: pd.DataFrame) -> dict:
         metadata = {}
 
-        # QC metric (use first QC column if multiple)
-        qc_col = qc_cols[0] if isinstance(qc_cols, list) else qc_cols
+        # QC metric
         if qc_col in df.columns:
             metadata["surface_holes"] = df[qc_col].values
 
-        # scanner info (use first metadata column that contains 'manufacturer')
-        scanner_col = next((col for col in metadata_cols if "manufacturer" in col.lower()), None)
+        # scanner info - prefer scanner model (manufacturersmn) over manufacturer
+        scanner_col = col_map.get("scanner_model", col_map.get("scanner_manufacturer"))
         if scanner_col and scanner_col in df.columns:
             metadata["scanner"] = df[scanner_col].values
 
