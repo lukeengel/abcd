@@ -52,3 +52,8 @@ logs/
 
 # Local development
 .local/
+
+# Figures
+notebooks/figures/
+notebooks/figures/
+notebooks/figures/
